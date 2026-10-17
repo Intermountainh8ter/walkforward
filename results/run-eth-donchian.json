@@ -1,0 +1,381 @@
+{
+  "tool": "walkforward 0.1.0",
+  "prereg_sha256": "9eb6b28b362e3d0d385688190ae865ccad7d99ef554ebc52b5b4e025e43a1926",
+  "data_sha256": "46995e35309244e2a77d0bee2d7ede3d0ca55c4a33900541979d3866c681980c",
+  "n_windows": 15,
+  "windows": [
+    {
+      "is_start": 722,
+      "is_end": 9482,
+      "oos_start": 9482,
+      "oos_end": 11672,
+      "chosen": {
+        "n": 168.0
+      },
+      "is_metrics": {
+        "n_bars": 8760,
+        "sharpe_annual": 1.2298818776987819,
+        "total_return": 0.8495830522961016,
+        "max_drawdown": 0.4506785752612471,
+        "n_trades": 22
+      },
+      "oos_metrics": {
+        "n_bars": 2190,
+        "sharpe_annual": -0.13210593465758888,
+        "total_return": -0.03804022395182738,
+        "max_drawdown": 0.21810381512220822,
+        "n_trades": 8
+      }
+    },
+    {
+      "is_start": 2912,
+      "is_end": 11672,
+      "oos_start": 11672,
+      "oos_end": 13862,
+      "chosen": {
+        "n": 336.0
+      },
+      "is_metrics": {
+        "n_bars": 8760,
+        "sharpe_annual": 0.6500450429661342,
+        "total_return": 0.23140304982680848,
+        "max_drawdown": 0.41542447352820566,
+        "n_trades": 14
+      },
+      "oos_metrics": {
+        "n_bars": 2190,
+        "sharpe_annual": 1.6571890481357359,
+        "total_return": 0.16738424348365832,
+        "max_drawdown": 0.1665934548649236,
+        "n_trades": 1
+      }
+    },
+    {
+      "is_start": 5102,
+      "is_end": 13862,
+      "oos_start": 13862,
+      "oos_end": 16052,
+      "chosen": {
+        "n": 336.0
+      },
+      "is_metrics": {
+        "n_bars": 8760,
+        "sharpe_annual": 0.8020027719180974,
+        "total_return": 0.31535271992446856,
+        "max_drawdown": 0.3099753364507094,
+        "n_trades": 11
+      },
+      "oos_metrics": {
+        "n_bars": 2190,
+        "sharpe_annual": -0.8199364482905844,
+        "total_return": -0.10931433676781532,
+        "max_drawdown": 0.33490349682648013,
+        "n_trades": 5
+      }
+    },
+    {
+      "is_start": 7292,
+      "is_end": 16052,
+      "oos_start": 16052,
+      "oos_end": 18242,
+      "chosen": {
+        "n": 720.0
+      },
+      "is_metrics": {
+        "n_bars": 8760,
+        "sharpe_annual": 0.13921285609282988,
+        "total_return": -0.026788873575262717,
+        "max_drawdown": 0.2932380783986489,
+        "n_trades": 7
+      },
+      "oos_metrics": {
+        "n_bars": 2190,
+        "sharpe_annual": 2.075944223028004,
+        "total_return": 0.181509274495268,
+        "max_drawdown": 0.13295892719963676,
+        "n_trades": 1
+      }
+    },
+    {
+      "is_start": 9482,
+      "is_end": 18242,
+      "oos_start": 18242,
+      "oos_end": 20432,
+      "chosen": {
+        "n": 336.0
+      },
+      "is_metrics": {
+        "n_bars": 8760,
+        "sharpe_annual": 0.7103017489583743,
+        "total_return": 0.24258438408648386,
+        "max_drawdown": 0.36928023286738787,
+        "n_trades": 13
+      },
+      "oos_metrics": {
+        "n_bars": 2190,
+        "sharpe_annual": -1.3602585206826225,
+        "total_return": -0.16066199823717675,
+        "max_drawdown": 0.2540057629266488,
+        "n_trades": 6
+      }
+    },
+    {
+      "is_start": 11672,
+      "is_end": 20432,
+      "oos_start": 20432,
+      "oos_end": 22622,
+      "chosen": {
+        "n": 336.0
+      },
+      "is_metrics": {
+        "n_bars": 8760,
+        "sharpe_annual": 0.3756448706303687,
+        "total_return": 0.06945506502135879,
+        "max_drawdown": 0.36928023286738765,
+        "n_trades": 14
+      },
+      "oos_metrics": {
+        "n_bars": 2190,
+        "sharpe_annual": -2.8870252230584965,
+        "total_return": -0.19695382853782228,
+        "max_drawdown": 0.20557598799485688,
+        "n_trades": 6
+      }
+    },
+    {
+      "is_start": 13862,
+      "is_end": 22622,
+      "oos_start": 22622,
+      "oos_end": 24812,
+      "chosen": {
+        "n": 168.0
+      },
+      "is_metrics": {
+        "n_bars": 8760,
+        "sharpe_annual": -0.02589193574614386,
+        "total_return": -0.08325321379394646,
+        "max_drawdown": 0.3686184247428279,
+        "n_trades": 26
+      },
+      "oos_metrics": {
+        "n_bars": 2190,
+        "sharpe_annual": -0.7038032456486161,
+        "total_return": -0.04701033020941636,
+        "max_drawdown": 0.1278323324316587,
+        "n_trades": 7
+      }
+    },
+    {
+      "is_start": 16052,
+      "is_end": 24812,
+      "oos_start": 24812,
+      "oos_end": 27002,
+      "chosen": {
+        "n": 168.0
+      },
+      "is_metrics": {
+        "n_bars": 8760,
+        "sharpe_annual": 0.32650707529354095,
+        "total_return": 0.05487175602731398,
+        "max_drawdown": 0.30166061444169645,
+        "n_trades": 25
+      },
+      "oos_metrics": {
+        "n_bars": 2190,
+        "sharpe_annual": 0.25715822600689303,
+        "total_return": 0.0050092030291430945,
+        "max_drawdown": 0.15311745396577392,
+        "n_trades": 9
+      }
+    },
+    {
+      "is_start": 18242,
+      "is_end": 27002,
+      "oos_start": 27002,
+      "oos_end": 29192,
+      "chosen": {
+        "n": 96.0
+      },
+      "is_metrics": {
+        "n_bars": 8760,
+        "sharpe_annual": 0.4647861218967656,
+        "total_return": 0.106536014988732,
+        "max_drawdown": 0.30712089188664116,
+        "n_trades": 45
+      },
+      "oos_metrics": {
+        "n_bars": 2190,
+        "sharpe_annual": 1.8846998220423812,
+        "total_return": 0.22665887242050586,
+        "max_drawdown": 0.2814862785471387,
+        "n_trades": 10
+      }
+    },
+    {
+      "is_start": 20432,
+      "is_end": 29192,
+      "oos_start": 29192,
+      "oos_end": 31382,
+      "chosen": {
+        "n": 720.0
+      },
+      "is_metrics": {
+        "n_bars": 8760,
+        "sharpe_annual": 0.893582771646123,
+        "total_return": 0.33734109987570116,
+        "max_drawdown": 0.2853164310350348,
+        "n_trades": 6
+      },
+      "oos_metrics": {
+        "n_bars": 2190,
+        "sharpe_annual": -0.38836711646658223,
+        "total_return": -0.04073782984568619,
+        "max_drawdown": 0.16646176631620646,
+        "n_trades": 2
+      }
+    },
+    {
+      "is_start": 22622,
+      "is_end": 31382,
+      "oos_start": 31382,
+      "oos_end": 33572,
+      "chosen": {
+        "n": 96.0
+      },
+      "is_metrics": {
+        "n_bars": 8760,
+        "sharpe_annual": 1.1477297730805254,
+        "total_return": 0.4740894419689976,
+        "max_drawdown": 0.3357657771580119,
+        "n_trades": 43
+      },
+      "oos_metrics": {
+        "n_bars": 2190,
+        "sharpe_annual": -1.3354015938762631,
+        "total_return": -0.1044377801150731,
+        "max_drawdown": 0.19501507213722025,
+        "n_trades": 13
+      }
+    },
+    {
+      "is_start": 24812,
+      "is_end": 33572,
+      "oos_start": 33572,
+      "oos_end": 35762,
+      "chosen": {
+        "n": 720.0
+      },
+      "is_metrics": {
+        "n_bars": 8760,
+        "sharpe_annual": 1.013749882516946,
+        "total_return": 0.4271777277398714,
+        "max_drawdown": 0.41636013746656175,
+        "n_trades": 5
+      },
+      "oos_metrics": {
+        "n_bars": 2190,
+        "sharpe_annual": 0.834866807396555,
+        "total_return": 0.08339142262220234,
+        "max_drawdown": 0.25304178473374206,
+        "n_trades": 2
+      }
+    },
+    {
+      "is_start": 27002,
+      "is_end": 35762,
+      "oos_start": 35762,
+      "oos_end": 37952,
+      "chosen": {
+        "n": 168.0
+      },
+      "is_metrics": {
+        "n_bars": 8760,
+        "sharpe_annual": 1.1842815509812026,
+        "total_return": 0.5390127791860164,
+        "max_drawdown": 0.31313347522914925,
+        "n_trades": 28
+      },
+      "oos_metrics": {
+        "n_bars": 2190,
+        "sharpe_annual": -2.5071015901171005,
+        "total_return": -0.20509515813706147,
+        "max_drawdown": 0.2768021902142638,
+        "n_trades": 7
+      }
+    },
+    {
+      "is_start": 29192,
+      "is_end": 37952,
+      "oos_start": 37952,
+      "oos_end": 40142,
+      "chosen": {
+        "n": 720.0
+      },
+      "is_metrics": {
+        "n_bars": 8760,
+        "sharpe_annual": 0.38180687988875145,
+        "total_return": 0.07563977081209261,
+        "max_drawdown": 0.29039060541203243,
+        "n_trades": 4
+      },
+      "oos_metrics": {
+        "n_bars": 2190,
+        "sharpe_annual": 2.9730533956375487,
+        "total_return": 0.4894612013807622,
+        "max_drawdown": 0.22160586383406244,
+        "n_trades": 3
+      }
+    },
+    {
+      "is_start": 31382,
+      "is_end": 40142,
+      "oos_start": 40142,
+      "oos_end": 42332,
+      "chosen": {
+        "n": 720.0
+      },
+      "is_metrics": {
+        "n_bars": 8760,
+        "sharpe_annual": 1.3493671395339895,
+        "total_return": 0.6701625010699459,
+        "max_drawdown": 0.25702261046914954,
+        "n_trades": 5
+      },
+      "oos_metrics": {
+        "n_bars": 2190,
+        "sharpe_annual": 0.6200819672619233,
+        "total_return": 0.044944953113893016,
+        "max_drawdown": 0.15180712867274626,
+        "n_trades": 2
+      }
+    }
+  ],
+  "oos_concatenated": {
+    "n_bars": 32850,
+    "sharpe_annual": 0.2580151749393539,
+    "total_return": 0.07757622342080306,
+    "max_drawdown": 0.5163728835002677,
+    "n_trades": 82
+  },
+  "oos_buy_and_hold": {
+    "n_bars": 32850,
+    "sharpe_annual": 0.49470769946730264,
+    "total_return": 0.48403268526086474,
+    "max_drawdown": 0.7448850042883588,
+    "n_trades": 1
+  },
+  "in_sample_best_full_sample": {
+    "n_bars": 43088,
+    "sharpe_annual": 0.629614415104208,
+    "total_return": 1.5739968776889266,
+    "max_drawdown": 0.7025605402445065,
+    "n_trades": 32
+  },
+  "in_sample_best_params": {
+    "n": 720.0
+  },
+  "deflated_sharpe_prob": 0.694798622907574,
+  "pbo": 0.36309246309246307,
+  "pbo_combinations": 12870,
+  "verdict": "not supported: oos_sharpe 0.26 vs buy_and_hold 0.49, DSR 0.695, PBO 0.363"
+}
