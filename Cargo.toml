@@ -1,0 +1,18 @@
+[package]
+name = "walkforward"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Pre-registered backtesting: lock the data hash, parameter grid and out-of-sample split before looking; walk-forward only; deflated Sharpe and probability of backtest overfitting by default."
+repository = "https://github.com/Intermountainh8ter/walkforward"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+sha2 = "0.10"
+hex = "0.4"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+rand = "0.9"
+rand_pcg = "0.9"
