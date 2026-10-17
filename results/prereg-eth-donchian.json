@@ -1,0 +1,30 @@
+{
+  "created_unix": 1792231054,
+  "data_path": "data/ETHUSDT-1h.csv",
+  "data_sha256": "46995e35309244e2a77d0bee2d7ede3d0ca55c4a33900541979d3866c681980c",
+  "n_bars": 43810,
+  "strategy": "donchian",
+  "grid": {
+    "n": [
+      24.0,
+      48.0,
+      96.0,
+      168.0,
+      336.0,
+      720.0
+    ]
+  },
+  "n_configs": 6,
+  "is_bars": 8760,
+  "oos_bars": 2190,
+  "costs": {
+    "fee_bps": 10.0,
+    "slippage_bps": 5.0
+  },
+  "bars_per_year": 8760.0,
+  "cscv_blocks": 16,
+  "seed": 42,
+  "selection_metric": "in-sample annualised Sharpe, ties to the first configuration in grid order",
+  "headline": "concatenated out-of-sample returns across all walk-forward windows",
+  "prereg_sha256": "9eb6b28b362e3d0d385688190ae865ccad7d99ef554ebc52b5b4e025e43a1926"
+}

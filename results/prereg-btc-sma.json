@@ -1,0 +1,32 @@
+{
+  "created_unix": 1792231054,
+  "data_path": "data/BTCUSDT-1h.csv",
+  "data_sha256": "7f35733395e0b44da0afb71221d335eba8dfd6bb4549ca1586001e154d6fc919",
+  "n_bars": 43810,
+  "strategy": "sma",
+  "grid": {
+    "fast": [
+      10.0,
+      20.0,
+      50.0
+    ],
+    "slow": [
+      100.0,
+      200.0,
+      400.0
+    ]
+  },
+  "n_configs": 9,
+  "is_bars": 8760,
+  "oos_bars": 2190,
+  "costs": {
+    "fee_bps": 10.0,
+    "slippage_bps": 5.0
+  },
+  "bars_per_year": 8760.0,
+  "cscv_blocks": 16,
+  "seed": 42,
+  "selection_metric": "in-sample annualised Sharpe, ties to the first configuration in grid order",
+  "headline": "concatenated out-of-sample returns across all walk-forward windows",
+  "prereg_sha256": "599a0645051fe1ebe9fd57ecb3c92162e821f19789c566eafdce581777765754"
+}
