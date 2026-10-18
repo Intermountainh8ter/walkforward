@@ -74,6 +74,67 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Render every `run-*.json` in a directory as one Markdown table and splice it into the README
+    /// between `<!-- RESULTS:START -->` and `<!-- RESULTS:END -->`. Refuses on a missing field.
+    Report {
+        #[arg(long)]
+        dir: PathBuf,
+        #[arg(long)]
+        readme: PathBuf,
+    },
+}
+
+fn report(dir: &PathBuf, readme: &PathBuf) -> anyhow::Result<()> {
+    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("run-") && n.ends_with(".json")))
+        .collect();
+    files.sort();
+    anyhow::ensure!(!files.is_empty(), "no run-*.json in {}", dir.display());
+    let mut t = String::from(
+        "| study | OOS Sharpe | OOS return | OOS max DD | trades | buy-and-hold Sharpe | buy-and-hold return | IS-best Sharpe (not the headline) | DSR | PBO | verdict |\n|---|---|---|---|---|---|---|---|---|---|---|\n",
+    );
+    for f in &files {
+        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(f)?)?;
+        let g = |path: &[&str]| -> anyhow::Result<&serde_json::Value> {
+            let mut cur = &v;
+            for k in path {
+                cur = cur.get(*k).ok_or_else(|| anyhow::anyhow!("{} missing field {}", f.display(), path.join(".")))?;
+            }
+            Ok(cur)
+        };
+        let num = |path: &[&str]| -> anyhow::Result<f64> { g(path)?.as_f64().ok_or_else(|| anyhow::anyhow!("not a number: {}", path.join("."))) };
+        let study = f.file_stem().and_then(|s| s.to_str()).unwrap_or("?").trim_start_matches("run-").to_string();
+        t.push_str(&format!(
+            "| {} | {:.2} | {:+.1}% | {:.1}% | {} | {:.2} | {:+.1}% | {:.2} | {:.3} | {:.3} | {} |\n",
+            study,
+            num(&["oos_concatenated", "sharpe_annual"])?,
+            num(&["oos_concatenated", "total_return"])? * 100.0,
+            num(&["oos_concatenated", "max_drawdown"])? * 100.0,
+            num(&["oos_concatenated", "n_trades"])? as u64,
+            num(&["oos_buy_and_hold", "sharpe_annual"])?,
+            num(&["oos_buy_and_hold", "total_return"])? * 100.0,
+            num(&["in_sample_best_full_sample", "sharpe_annual"])?,
+            num(&["deflated_sharpe_prob"])?,
+            num(&["pbo"])?,
+            g(&["verdict"])?.as_str().unwrap_or("?").split(':').next().unwrap_or("?"),
+        ));
+    }
+    t.push_str("\nOOS = every out-of-sample bar concatenated, parameters chosen only on the preceding in-sample window. DSR = deflated Sharpe ratio (probability the best configuration's Sharpe beats the expected maximum of unskilled trials). PBO = probability of backtest overfitting by CSCV. Full per-window detail in `results/run-*.json`.\n");
+    const START: &str = "<!-- RESULTS:START -->";
+    const END: &str = "<!-- RESULTS:END -->";
+    let text = std::fs::read_to_string(readme)?;
+    let s = text.find(START).ok_or_else(|| anyhow::anyhow!("README missing {START}"))?;
+    let e = text.find(END).ok_or_else(|| anyhow::anyhow!("README missing {END}"))?;
+    anyhow::ensure!(s < e, "END before START");
+    let mut out = String::new();
+    out.push_str(&text[..s + START.len()]);
+    out.push('\n');
+    out.push_str(&t);
+    out.push_str(&text[e..]);
+    std::fs::write(readme, out)?;
+    print!("{t}");
+    Ok(())
 }
 
 // ---------- data ----------
@@ -654,6 +715,7 @@ fn main() -> anyhow::Result<()> {
             prereg(data, strategy, grid, is_bars, oos_bars, fee_bps, slippage_bps, bars_per_year, cscv_blocks, seed, out)
         }
         Cmd::Run { prereg, out } => run(prereg, out),
+        Cmd::Report { dir, readme } => report(&dir, &readme),
     }
 }
 
