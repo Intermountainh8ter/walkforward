@@ -16,3 +16,5 @@ hex = "0.4"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 rand = "0.9"
 rand_pcg = "0.9"
+
+[workspace]
