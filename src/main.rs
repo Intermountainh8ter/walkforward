@@ -82,6 +82,18 @@ enum Cmd {
         #[arg(long)]
         readme: PathBuf,
     },
+    /// Grade three scripted reviewers on matched flawed (lookahead) and clean copies of synthetic
+    /// series; report flaw recall and clean-control false-positive rate separately.
+    Cleangrade {
+        #[arg(long, default_value_t = 40)]
+        pairs: usize,
+        #[arg(long, default_value_t = 3000)]
+        bars: usize,
+        #[arg(long, default_value_t = 7)]
+        seed: u64,
+        #[arg(long)]
+        out: PathBuf,
+    },
 }
 
 fn report(dir: &PathBuf, readme: &PathBuf) -> anyhow::Result<()> {
@@ -707,6 +719,137 @@ fn run(prereg_path: PathBuf, out: PathBuf) -> anyhow::Result<()> {
     Ok(())
 }
 
+// ---------- cleangrade: paired flawed/clean grader ----------
+
+/// Deliberately flawed strategy: goes long when the NEXT bar closes up. Out of range it is flat.
+pub struct LookaheadShift;
+impl Strategy for LookaheadShift {
+    fn target(&self, bars: &[Bar], t: usize, _: &Params) -> f64 {
+        match bars.get(t + 1) {
+            Some(n) if n.close > bars[t].close => 1.0,
+            _ => 0.0,
+        }
+    }
+    fn warmup(&self, _: &Params) -> usize {
+        0
+    }
+}
+
+/// Truncation-invariance check: the target at t must not change when bars after t are removed.
+pub fn truncation_flags(strat: &dyn Strategy, bars: &[Bar], p: &Params, stride: usize) -> bool {
+    let first = strat.warmup(p) + 1;
+    (first..bars.len()).step_by(stride.max(1)).any(|t| {
+        let full = strat.target(bars, t, p);
+        let cut = strat.target(&bars[..=t], t, p);
+        !(full == cut || (full.is_nan() && cut.is_nan()))
+    })
+}
+
+fn synthetic_bars(rng: &mut rand_pcg::Pcg64, n: usize) -> Vec<Bar> {
+    use rand::Rng;
+    let mut px = 100.0f64;
+    (0..n)
+        .map(|i| {
+            let open = px;
+            px *= 1.0 + (rng.random::<f64>() - 0.5) * 0.02;
+            let (hi, lo) = (open.max(px) * 1.001, open.min(px) * 0.999);
+            Bar { ts_ms: i as i64 * 3_600_000, open, high: hi, low: lo, close: px, volume: 1.0 }
+        })
+        .collect()
+}
+
+#[derive(Default, Clone, Copy)]
+struct Tally {
+    tp: usize,
+    fnn: usize,
+    fp: usize,
+    tn: usize,
+}
+impl Tally {
+    fn add(&mut self, flawed: bool, flagged: bool) {
+        match (flawed, flagged) {
+            (true, true) => self.tp += 1,
+            (true, false) => self.fnn += 1,
+            (false, true) => self.fp += 1,
+            (false, false) => self.tn += 1,
+        }
+    }
+    fn json(&self) -> serde_json::Value {
+        let rate = |a: usize, b: usize| if a + b == 0 { 0.0 } else { a as f64 / (a + b) as f64 };
+        serde_json::json!({
+            "flaw_recall": rate(self.tp, self.fnn),
+            "clean_control_false_positive_rate": rate(self.fp, self.tn),
+            "true_positives": self.tp, "false_negatives": self.fnn,
+            "false_positives": self.fp, "true_negatives": self.tn,
+        })
+    }
+}
+
+fn utc_iso(unix: u64) -> String {
+    let (days, rem) = ((unix / 86_400) as i64, unix % 86_400);
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", rem / 3600, rem % 3600 / 60, rem % 60)
+}
+
+pub fn grade(pairs: usize, n_bars: usize, seed: u64) -> (serde_json::Value, usize) {
+    let mut rng = rand_pcg::Pcg64::seed_from_u64(seed);
+    let (mut always, mut never, mut trunc) = (Tally::default(), Tally::default(), Tally::default());
+    let clean = Donchian;
+    let mut p = Params::new();
+    p.insert("n".into(), 20.0);
+    let costs = Costs { fee_bps: 10.0, slippage_bps: 5.0 };
+    let mut flawed_gross = 0.0;
+    let mut clean_gross = 0.0;
+    for _ in 0..pairs {
+        let b = synthetic_bars(&mut rng, n_bars);
+        // ground truth lives here, in-run: (is_flawed, strategy)
+        let copies: [(bool, &dyn Strategy); 2] = [(true, &LookaheadShift), (false, &clean)];
+        for (flawed, s) in copies {
+            always.add(flawed, true);
+            never.add(flawed, false);
+            trunc.add(flawed, truncation_flags(s, &b, &p, 7));
+            let (r, _) = simulate(s, &b, &p, &costs, 0, n_bars);
+            let tot: f64 = r.iter().sum();
+            if flawed { flawed_gross += tot } else { clean_gross += tot }
+        }
+    }
+    let v = serde_json::json!({
+        "reviewers": { "always_flag": always.json(), "never_flag": never.json(), "truncation": trunc.json() },
+        "mean_sum_return_flawed_copy": flawed_gross / pairs.max(1) as f64,
+        "mean_sum_return_clean_copy": clean_gross / pairs.max(1) as f64,
+    });
+    (v, pairs * 2)
+}
+
+fn cleangrade(pairs: usize, bars: usize, seed: u64, out: &PathBuf) -> anyhow::Result<()> {
+    let t0 = std::time::Instant::now();
+    let started = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs();
+    let (grader, n_items) = grade(pairs, bars, seed);
+    let doc = serde_json::json!({
+        "grader": grader,
+        "config": { "pairs": pairs, "bars": bars, "seed": seed, "items_graded": n_items,
+                    "clean_strategy": "donchian n=20", "flawed_strategy": "lookahead one bar" },
+        "provenance": {
+            "started_at": utc_iso(started),
+            "seeds": [seed],
+            "command": format!("cargo run --locked --release -q -- cleangrade --pairs {pairs} --bars {bars} --seed {seed} --out {}", out.display()),
+            "hardware": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
+            "wall_s": t0.elapsed().as_secs_f64().round(),
+            "data_sources": [{"url": "synthetic seeded random-walk series generated in-process", "license": "none (generated)"}],
+        },
+    });
+    std::fs::write(out, serde_json::to_string_pretty(&doc)? + "\n")?;
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
@@ -716,6 +859,7 @@ fn main() -> anyhow::Result<()> {
         }
         Cmd::Run { prereg, out } => run(prereg, out),
         Cmd::Report { dir, readme } => report(&dir, &readme),
+        Cmd::Cleangrade { pairs, bars, seed, out } => cleangrade(pairs, bars, seed, &out),
     }
 }
 
@@ -813,5 +957,21 @@ mod tests {
         let few: Vec<f64> = vec![sr, sr * 0.5];
         let many: Vec<f64> = (0..200).map(|i| sr * (i as f64 / 200.0)).collect();
         assert!(deflated_sharpe(sr, &few, &rets) > deflated_sharpe(sr, &many, &rets));
+    }
+
+    #[test]
+    fn truncation_reviewer_separates_flawed_from_clean() {
+        let (v, n) = grade(5, 600, 7);
+        assert_eq!(n, 10);
+        let r = &v["reviewers"];
+        assert_eq!(r["truncation"]["flaw_recall"], 1.0);
+        assert_eq!(r["truncation"]["clean_control_false_positive_rate"], 0.0);
+        assert_eq!(r["always_flag"]["clean_control_false_positive_rate"], 1.0);
+        assert_eq!(r["never_flag"]["flaw_recall"], 0.0);
+    }
+
+    #[test]
+    fn utc_iso_known_date() {
+        assert_eq!(utc_iso(1_762_858_800), "2025-11-11T11:00:00Z");
     }
 }

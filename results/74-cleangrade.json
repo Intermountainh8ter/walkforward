@@ -1,0 +1,55 @@
+{
+  "config": {
+    "bars": 3000,
+    "clean_strategy": "donchian n=20",
+    "flawed_strategy": "lookahead one bar",
+    "items_graded": 80,
+    "pairs": 40,
+    "seed": 7
+  },
+  "grader": {
+    "mean_sum_return_clean_copy": -0.18351201593620295,
+    "mean_sum_return_flawed_copy": 5.2405248208098865,
+    "reviewers": {
+      "always_flag": {
+        "clean_control_false_positive_rate": 1.0,
+        "false_negatives": 0,
+        "false_positives": 40,
+        "flaw_recall": 1.0,
+        "true_negatives": 0,
+        "true_positives": 40
+      },
+      "never_flag": {
+        "clean_control_false_positive_rate": 0.0,
+        "false_negatives": 40,
+        "false_positives": 0,
+        "flaw_recall": 0.0,
+        "true_negatives": 40,
+        "true_positives": 0
+      },
+      "truncation": {
+        "clean_control_false_positive_rate": 0.0,
+        "false_negatives": 0,
+        "false_positives": 0,
+        "flaw_recall": 1.0,
+        "true_negatives": 40,
+        "true_positives": 40
+      }
+    }
+  },
+  "provenance": {
+    "command": "cargo run --locked --release -q -- cleangrade --pairs 40 --bars 3000 --seed 7 --out results/74-cleangrade.json",
+    "data_sources": [
+      {
+        "license": "none (generated)",
+        "url": "synthetic seeded random-walk series generated in-process"
+      }
+    ],
+    "hardware": "linux x86_64",
+    "seeds": [
+      7
+    ],
+    "started_at": "2026-11-11T11:04:44Z",
+    "wall_s": 0.0
+  }
+}

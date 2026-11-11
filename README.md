@@ -31,6 +31,18 @@ Hourly Binance spot candles, 2021-01-01 to 2025-12-31 (43,810 bars per symbol), 
 OOS = every out-of-sample bar concatenated, parameters chosen only on the preceding in-sample window. DSR = deflated Sharpe ratio (probability the best configuration's Sharpe beats the expected maximum of unskilled trials). PBO = probability of backtest overfitting by CSCV. Full per-window detail in `results/run-*.json`.
 <!-- RESULTS:END -->
 
+## Paired flaw grader (`cleangrade`)
+
+`cleangrade` builds matched flawed and clean copies of the simulation path on seeded synthetic series: a one-bar lookahead strategy and a Donchian breakout, 40 pairs of 3,000 bars each. Three scripted reviewers are graded against an in-run ground-truth list, and flaw recall and clean-control false-positive rate are reported separately. Results in `results/74-cleangrade.json`, run with `cargo run --locked --release -q -- cleangrade --pairs 40 --bars 3000 --seed 7 --out results/74-cleangrade.json`.
+
+| reviewer | flaw recall | clean-control false-positive rate |
+|---|---|---|
+| always-flag | 1.0 | 1.0 |
+| never-flag | 0.0 | 0.0 |
+| truncation-invariance | 1.0 | 0.0 |
+
+Recall alone cannot separate always-flag from the truncation reviewer; the clean controls can. The flawed strategy and the truncation check are both written by the same author, so this shows the grader works, not that the check catches every real leak. The series are synthetic random walks.
+
 ## Usage
 
 ```
