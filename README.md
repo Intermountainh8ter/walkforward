@@ -57,6 +57,17 @@ Recall alone cannot separate always-flag from the truncation reviewer; the clean
 
 The pass count did not fall as drift rose. The series are synthetic i.i.d. random walks with a constant drift, which is easier to detect than a real regime-dependent edge; the result says nothing about real crypto bars.
 
+## Leaky-signal gate test (`leakpass`)
+
+`leakpass` runs the same sma-grid DSR and CSCV PBO gates on 100 seeded zero-drift random walks (20,000 bars each, seed 7, 15 bps per fill, 8 CSCV blocks) in two arms on identical paths: a causal signal and one computed on the next bar's close. Results in `results/165-leakpass.json`, run with `cargo run --locked --release -q -- leakpass --series 100 --bars 20000 --seed 7 --out results/165-leakpass.json`.
+
+| arm | combined pass count (of 100) | Wilson 95% interval |
+|---|---|---|
+| causal | 0 | 0.0 to 0.037 |
+| leaky | 3 | 0.010 to 0.085 |
+
+The pre-registered hypothesis (leaky arm passes at least 50 of 100) was refuted. The leak here is a one-bar shift on a slow moving-average crossover, which barely changes the position, so it earns little; a stronger leak (such as the `cleangrade` flawed strategy) was not tested. The series are synthetic random walks.
+
 ## Usage
 
 ```

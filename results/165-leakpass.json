@@ -1,0 +1,50 @@
+{
+  "arms": {
+    "causal": {
+      "combined_pass_count": 0,
+      "combined_pass_rate": 0.0,
+      "dsr_only_pass_count": 0,
+      "mean_dsr": 0.29954836140043956,
+      "mean_pbo": 0.5345714285714286,
+      "pbo_only_pass_count": 47,
+      "wilson95_high": 0.03699480747600191,
+      "wilson95_low": 0.0
+    },
+    "leaky": {
+      "combined_pass_count": 3,
+      "combined_pass_rate": 0.03,
+      "dsr_only_pass_count": 3,
+      "mean_dsr": 0.46781408384288414,
+      "mean_pbo": 0.5012857142857142,
+      "pbo_only_pass_count": 51,
+      "wilson95_high": 0.08452078080402699,
+      "wilson95_low": 0.010254338223414816
+    }
+  },
+  "config": {
+    "bars": 20000,
+    "cscv_blocks": 8,
+    "fee_bps": 10.0,
+    "gate": "DSR >= 0.95 and PBO <= 0.5, full sample",
+    "grid": "sma fast=10,20,50;slow=100,200,400",
+    "leaky_arm": "sma signal at t computed on the bar t+1 close",
+    "seed": 7,
+    "series": 100,
+    "slippage_bps": 5.0
+  },
+  "provenance": {
+    "command": "cargo run --locked --release -q -- leakpass --series 100 --bars 20000 --seed 7 --out results/165-leakpass.json",
+    "data_sources": [
+      {
+        "license": "none (generated)",
+        "url": "synthetic seeded random-walk series generated in-process"
+      }
+    ],
+    "hardware": "linux x86_64",
+    "seeds": [
+      7
+    ],
+    "started_at": "2026-11-16T10:33:27Z",
+    "wall_s": 22.0
+  }
+}

@@ -106,6 +106,18 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Run the sma-grid DSR and PBO gates on zero-drift random walks with a causal signal and with
+    /// a signal that uses the next bar's close, and count combined passes in each arm.
+    Leakpass {
+        #[arg(long, default_value_t = 100)]
+        series: usize,
+        #[arg(long, default_value_t = 20000)]
+        bars: usize,
+        #[arg(long, default_value_t = 7)]
+        seed: u64,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Plant a per-bar drift of known size in seeded random walks and report the combined gate
     /// pass rate per drift size, with Wilson intervals.
     Powersweep {
@@ -895,7 +907,21 @@ pub fn wilson(k: usize, n: usize) -> (f64, f64) {
 
 /// DSR and PBO of the sma grid on one series, computed on the full sample as `run` does.
 pub fn gate_on_series(bars: &[Bar], costs: &Costs, blocks: usize) -> (f64, f64) {
-    let strat = SmaCross;
+    gate_on_series_with(&SmaCross, bars, costs, blocks)
+}
+
+/// Sma crossover whose signal at t is computed on the bar t+1 close: a deliberate one-bar leak.
+pub struct LeakySma;
+impl Strategy for LeakySma {
+    fn target(&self, bars: &[Bar], t: usize, p: &Params) -> f64 {
+        SmaCross.target(bars, (t + 1).min(bars.len() - 1), p)
+    }
+    fn warmup(&self, p: &Params) -> usize {
+        SmaCross.warmup(p)
+    }
+}
+
+pub fn gate_on_series_with(strat: &dyn Strategy, bars: &[Bar], costs: &Costs, blocks: usize) -> (f64, f64) {
     let mut configs = Vec::new();
     for f in [10.0, 20.0, 50.0] {
         for sl in [100.0, 200.0, 400.0] {
@@ -911,7 +937,7 @@ pub fn gate_on_series(bars: &[Bar], costs: &Costs, blocks: usize) -> (f64, f64) 
     let mut srs = Vec::new();
     let mut rets = Vec::new();
     for (ci, c) in configs.iter().enumerate() {
-        let (r, _) = simulate(&strat, bars, c, costs, start, bars.len());
+        let (r, _) = simulate(strat, bars, c, costs, start, bars.len());
         for (t, v) in r.iter().enumerate() {
             matrix[t][ci] = *v;
         }
@@ -1034,6 +1060,66 @@ fn powersweep(series: usize, bars: usize, seed: u64, drifts: &[f64], out: &PathB
     Ok(())
 }
 
+/// Returns json by arm and (causal, leaky) combined pass counts. Both arms see identical paths.
+pub fn leakpass_count(series: usize, n_bars: usize, seed: u64, blocks: usize) -> (serde_json::Value, (usize, usize)) {
+    let costs = Costs { fee_bps: 10.0, slippage_bps: 5.0 };
+    let arms: [(&str, &dyn Strategy); 2] = [("causal", &SmaCross), ("leaky", &LeakySma)];
+    let mut map = serde_json::Map::new();
+    let mut counts = Vec::new();
+    for (name, strat) in arms {
+        let mut rng = rand_pcg::Pcg64::seed_from_u64(seed);
+        let (mut pass, mut dsr_pass, mut pbo_pass) = (0usize, 0usize, 0usize);
+        let (mut dsr_sum, mut pbo_sum) = (0.0, 0.0);
+        for _ in 0..series {
+            let b = synthetic_bars(&mut rng, n_bars);
+            let (dsr, pbo) = gate_on_series_with(strat, &b, &costs, blocks);
+            let (d_ok, p_ok) = (dsr >= 0.95, pbo <= 0.5);
+            dsr_pass += d_ok as usize;
+            pbo_pass += p_ok as usize;
+            pass += (d_ok && p_ok) as usize;
+            dsr_sum += dsr;
+            pbo_sum += pbo;
+        }
+        let (lo, hi) = wilson(pass, series);
+        let n = series.max(1) as f64;
+        map.insert(
+            name.to_string(),
+            serde_json::json!({
+                "combined_pass_count": pass, "combined_pass_rate": pass as f64 / n,
+                "wilson95_low": lo, "wilson95_high": hi,
+                "dsr_only_pass_count": dsr_pass, "pbo_only_pass_count": pbo_pass,
+                "mean_dsr": dsr_sum / n, "mean_pbo": pbo_sum / n,
+            }),
+        );
+        counts.push(pass);
+    }
+    (serde_json::Value::Object(map), (counts[0], counts[1]))
+}
+
+fn leakpass(series: usize, bars: usize, seed: u64, out: &PathBuf) -> anyhow::Result<()> {
+    let t0 = std::time::Instant::now();
+    let started = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs();
+    let blocks = 8;
+    let (arms, _) = leakpass_count(series, bars, seed, blocks);
+    let doc = serde_json::json!({
+        "arms": arms,
+        "config": { "series": series, "bars": bars, "seed": seed, "cscv_blocks": blocks,
+                    "grid": "sma fast=10,20,50;slow=100,200,400", "fee_bps": 10.0, "slippage_bps": 5.0,
+                    "leaky_arm": "sma signal at t computed on the bar t+1 close",
+                    "gate": "DSR >= 0.95 and PBO <= 0.5, full sample" },
+        "provenance": {
+            "started_at": utc_iso(started),
+            "seeds": [seed],
+            "command": format!("cargo run --locked --release -q -- leakpass --series {series} --bars {bars} --seed {seed} --out {}", out.display()),
+            "hardware": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
+            "wall_s": t0.elapsed().as_secs_f64().round(),
+            "data_sources": [{"url": "synthetic seeded random-walk series generated in-process", "license": "none (generated)"}],
+        },
+    });
+    std::fs::write(out, serde_json::to_string_pretty(&doc)? + "\n")?;
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
@@ -1045,6 +1131,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::Report { dir, readme } => report(&dir, &readme),
         Cmd::Cleangrade { pairs, bars, seed, out } => cleangrade(pairs, bars, seed, &out),
         Cmd::Nullpass { series, bars, seed, out } => nullpass(series, bars, seed, &out),
+        Cmd::Leakpass { series, bars, seed, out } => leakpass(series, bars, seed, &out),
         Cmd::Powersweep { series, bars, seed, drifts_bps, out } => powersweep(series, bars, seed, &drifts_bps, &out),
     }
 }
@@ -1180,6 +1267,27 @@ mod tests {
         let (_, null) = nullpass_count(3, 1500, 7, 4);
         assert_eq!(ca[0], null);
         assert!(a.get("8bps").is_some());
+    }
+
+    #[test]
+    fn leaky_sma_is_flagged_by_truncation_and_causal_is_not() {
+        let mut rng = rand_pcg::Pcg64::seed_from_u64(7);
+        let b = synthetic_bars(&mut rng, 600);
+        let mut p = Params::new();
+        p.insert("fast".into(), 10.0);
+        p.insert("slow".into(), 100.0);
+        assert!(truncation_flags(&LeakySma, &b, &p, 1));
+        assert!(!truncation_flags(&SmaCross, &b, &p, 1));
+    }
+
+    #[test]
+    fn leakpass_is_deterministic_and_causal_arm_matches_nullpass() {
+        let (a, ca) = leakpass_count(3, 1500, 7, 4);
+        let (b, _) = leakpass_count(3, 1500, 7, 4);
+        assert_eq!(a, b);
+        let (_, null) = nullpass_count(3, 1500, 7, 4);
+        assert_eq!(ca.0, null);
+        assert!(ca.1 <= 3);
     }
 
     #[test]

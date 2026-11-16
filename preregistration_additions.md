@@ -29,3 +29,13 @@ Pre-registered metric: `/gates/power_by_effect_size/8bps/pass_rate` in `results/
 Expected: the pass rate at 8 bps per bar drift is at least 0.50 (range 0.5 to 1.0), above the pass rate at zero drift.
 
 Falsifier: a pass rate below 0.50 at the largest drift, or a pass count that falls as drift rises, or a nonzero pass count at zero drift beyond the iteration 162 result.
+
+## 2026-11-16T10:33:21Z leakpass proposal:9bb35b80222a94ab13ab7b72253803f03ace909770547341efc83f7c127d129a
+
+Hypothesis: on 100 seeded zero-drift random-walk series of 20,000 bars (seed 7, sma grid, 15 bps per fill, 8 CSCV blocks), the leaky arm (sma signal computed with the next bar's close) passes the combined gate (DSR >= 0.95 and PBO <= 0.5) on at least 50 of 100 series, while the causal arm reproduces the 0 of 100 of the nullpass result.
+
+Pre-registered metric: `/arms/leaky/combined_pass_count` in `results/165-leakpass.json`.
+
+Expected: leaky combined pass count at least 50 of 100 (range 50 to 100); causal arm stays at 0.
+
+Falsifier: a leaky-arm combined pass count below 50 of 100, meaning the DSR and PBO gates reject most look-ahead rules on their own.
