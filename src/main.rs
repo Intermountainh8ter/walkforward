@@ -168,6 +168,19 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Combined gate pass count on zero-drift random walks per CSCV embargo length.
+    Embargosweep {
+        #[arg(long, default_value_t = 100)]
+        series: usize,
+        #[arg(long, default_value_t = 20000)]
+        bars: usize,
+        #[arg(long, default_value_t = 7)]
+        seed: u64,
+        #[arg(long, value_delimiter = ',', default_value = "0,24,96,336")]
+        embargoes: Vec<usize>,
+        #[arg(long)]
+        out: PathBuf,
+    },
 }
 
 fn report(dir: &PathBuf, readme: &PathBuf) -> anyhow::Result<()> {
@@ -517,9 +530,15 @@ pub fn deflated_sharpe(sr_obs: f64, sr_trials: &[f64], rets: &[f64]) -> f64 {
 /// Probability of backtest overfitting by CSCV. `m` is bars x configs of per-bar returns.
 /// Returns (pbo, n_combinations).
 pub fn pbo_cscv(m: &[Vec<f64>], n_configs: usize, s: usize) -> (f64, usize) {
+    pbo_cscv_embargo(m, n_configs, s, 0)
+}
+
+/// CSCV PBO that drops `embargo` bars at both ends of every block, so no in-sample and
+/// out-of-sample bar sit within `embargo` bars of a block boundary. Embargo 0 is `pbo_cscv`.
+pub fn pbo_cscv_embargo(m: &[Vec<f64>], n_configs: usize, s: usize, embargo: usize) -> (f64, usize) {
     let t = m.len();
     let block = t / s;
-    if block == 0 || s < 2 || n_configs < 2 {
+    if block == 0 || s < 2 || n_configs < 2 || 2 * embargo >= block {
         return (f64::NAN, 0);
     }
     let blocks: Vec<usize> = (0..s).collect();
@@ -529,7 +548,7 @@ pub fn pbo_cscv(m: &[Vec<f64>], n_configs: usize, s: usize) -> (f64, usize) {
         let mut sr_is = vec![Vec::new(); n_configs];
         let mut sr_oos = vec![Vec::new(); n_configs];
         for (bi, row_start) in (0..s).map(|b| (b, b * block)) {
-            let rows = &m[row_start..row_start + block];
+            let rows = &m[row_start + embargo..row_start + block - embargo];
             for cfg in 0..n_configs {
                 let dst = if in_set.contains(&bi) { &mut sr_is[cfg] } else { &mut sr_oos[cfg] };
                 dst.extend(rows.iter().map(|r| r[cfg]));
@@ -963,6 +982,10 @@ pub fn gate_on_series_with(strat: &dyn Strategy, bars: &[Bar], costs: &Costs, bl
 
 /// Same gates over the full cross product of the given fast and slow windows.
 pub fn gate_on_grid(strat: &dyn Strategy, bars: &[Bar], costs: &Costs, blocks: usize, fasts: &[f64], slows: &[f64]) -> (f64, f64) {
+    gate_on_grid_embargo(strat, bars, costs, blocks, fasts, slows, 0)
+}
+
+pub fn gate_on_grid_embargo(strat: &dyn Strategy, bars: &[Bar], costs: &Costs, blocks: usize, fasts: &[f64], slows: &[f64], embargo: usize) -> (f64, f64) {
     let mut configs = Vec::new();
     for &f in fasts {
         for &sl in slows {
@@ -987,7 +1010,7 @@ pub fn gate_on_grid(strat: &dyn Strategy, bars: &[Bar], costs: &Costs, blocks: u
     }
     let best = (0..configs.len()).max_by(|&a, &b| srs[a].partial_cmp(&srs[b]).unwrap()).unwrap();
     let dsr = deflated_sharpe(srs[best], &srs, &rets[best]);
-    let (pbo, _) = pbo_cscv(&matrix, configs.len(), blocks);
+    let (pbo, _) = pbo_cscv_embargo(&matrix, configs.len(), blocks, embargo);
     (dsr, pbo)
 }
 
@@ -1310,6 +1333,59 @@ fn leakfrac(series: usize, bars: usize, seed: u64, fractions: &[f64], out: &Path
     Ok(())
 }
 
+/// Per-embargo combined pass counts on identical zero-drift paths. The sma grid is simulated once
+/// per series; only the CSCV step changes with the embargo.
+pub fn embargosweep_count(series: usize, n_bars: usize, seed: u64, blocks: usize, embargoes: &[usize]) -> (serde_json::Value, Vec<usize>) {
+    let costs = Costs { fee_bps: 10.0, slippage_bps: 5.0 };
+    let mut arr = Vec::new();
+    let mut counts = Vec::new();
+    for &e in embargoes {
+        let mut rng = rand_pcg::Pcg64::seed_from_u64(seed);
+        let (mut pass, mut dsr_pass, mut pbo_pass) = (0usize, 0usize, 0usize);
+        for _ in 0..series {
+            let b = synthetic_bars(&mut rng, n_bars);
+            let (dsr, pbo) = gate_on_grid_embargo(&SmaCross, &b, &costs, blocks, &[10.0, 20.0, 50.0], &[100.0, 200.0, 400.0], e);
+            let (d_ok, p_ok) = (dsr >= 0.95, pbo <= 0.5);
+            dsr_pass += d_ok as usize;
+            pbo_pass += p_ok as usize;
+            pass += (d_ok && p_ok) as usize;
+        }
+        let (lo, hi) = wilson(pass, series);
+        arr.push(serde_json::json!({
+            "embargo_bars": e, "null_pass_count": pass, "null_pass_rate": pass as f64 / series.max(1) as f64,
+            "wilson95_low": lo, "wilson95_high": hi,
+            "dsr_only_pass_count": dsr_pass, "pbo_only_pass_count": pbo_pass,
+        }));
+        counts.push(pass);
+    }
+    (serde_json::Value::Array(arr), counts)
+}
+
+fn embargosweep(series: usize, bars: usize, seed: u64, embargoes: &[usize], out: &PathBuf) -> anyhow::Result<()> {
+    let t0 = std::time::Instant::now();
+    let started = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs();
+    let blocks = 8;
+    let (arr, _) = embargosweep_count(series, bars, seed, blocks, embargoes);
+    let em: Vec<String> = embargoes.iter().map(|e| e.to_string()).collect();
+    let doc = serde_json::json!({
+        "embargo_sweep": arr,
+        "config": { "series": series, "bars": bars, "seed": seed, "cscv_blocks": blocks,
+                    "grid": "fast=10,20,50;slow=100,200,400", "fee_bps": 10.0, "slippage_bps": 5.0,
+                    "embargo": "bars dropped at both ends of every CSCV block, in and out of sample",
+                    "gate": "DSR >= 0.95 and PBO <= 0.5, full sample" },
+        "provenance": {
+            "started_at": utc_iso(started),
+            "seeds": [seed],
+            "command": format!("cargo run --locked --release -q -- embargosweep --series {series} --bars {bars} --seed {seed} --embargoes {} --out {}", em.join(","), out.display()),
+            "hardware": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
+            "wall_s": t0.elapsed().as_secs_f64().round(),
+            "data_sources": [{"url": "synthetic seeded random-walk series generated in-process", "license": "none (generated)"}],
+        },
+    });
+    std::fs::write(out, serde_json::to_string_pretty(&doc)? + "\n")?;
+    Ok(())
+}
+
 const GRID_FASTS: [f64; 5] = [10.0, 20.0, 35.0, 50.0, 70.0];
 const GRID_SLOWS: [f64; 5] = [100.0, 150.0, 200.0, 300.0, 400.0];
 
@@ -1381,6 +1457,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::Cleanpair { pairs, bars, seed, out } => cleanpair(pairs, bars, seed, &out),
         Cmd::Gridsweep { series, bars, seed, out } => gridsweep(series, bars, seed, &out),
         Cmd::Leakfrac { series, bars, seed, fractions, out } => leakfrac(series, bars, seed, &fractions, &out),
+        Cmd::Embargosweep { series, bars, seed, embargoes, out } => embargosweep(series, bars, seed, &embargoes, &out),
         Cmd::Powersweep { series, bars, seed, drifts_bps, out } => powersweep(series, bars, seed, &drifts_bps, &out),
     }
 }
@@ -1564,6 +1641,23 @@ mod tests {
         assert_eq!(ca[2], flawed);
         assert_eq!(a[0]["realised_leak_fraction"], 0.0);
         assert_eq!(a[2]["realised_leak_fraction"], 1.0);
+    }
+
+    #[test]
+    fn embargosweep_is_deterministic_and_zero_matches_nullpass() {
+        let (a, ca) = embargosweep_count(3, 1500, 7, 4, &[0, 20]);
+        let (b, _) = embargosweep_count(3, 1500, 7, 4, &[0, 20]);
+        assert_eq!(a, b);
+        let (_, np) = cleanpair_count(3, 1500, 7, 4);
+        assert_eq!(ca[0], np.1);
+        assert_eq!(a[1]["embargo_bars"], 20);
+    }
+
+    #[test]
+    fn embargo_zero_equals_plain_cscv_and_oversized_is_nan() {
+        let m: Vec<Vec<f64>> = (0..400).map(|i| vec![((i * 7) % 11) as f64 - 5.0, ((i * 3) % 13) as f64 - 6.0, ((i * 5) % 17) as f64 - 8.0]).collect();
+        assert_eq!(pbo_cscv(&m, 3, 4), pbo_cscv_embargo(&m, 3, 4, 0));
+        assert!(pbo_cscv_embargo(&m, 3, 4, 50).0.is_nan());
     }
 
     #[test]

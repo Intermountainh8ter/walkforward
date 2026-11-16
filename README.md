@@ -126,3 +126,17 @@ MIT.
 | causal (clean-control false positives) | 0 | 0.0 to 0.037 |
 
 The pre-registered hypothesis (recall at least 90 of 100, false positives at most 1 of 100) held. The lookahead arm peeks several bars ahead and so is far stronger than the one-bar leak in `leakpass`; any leak that earns this much is easy for the gates to pass, so this tests whether the gates can tell a strong leak from noise, not whether they detect a leak. The series are synthetic random walks.
+
+## Embargo sweep (`embargosweep`)
+
+`embargosweep` drops e bars at both ends of every CSCV block (in and out of sample) before the PBO step, on 100 seeded zero-drift random walks (20,000 bars each, seed 7, sma grid, 15 bps per fill, 8 CSCV blocks). Results in `results/182-embargosweep.json`, run with `cargo run --locked --release -q -- embargosweep --series 100 --bars 20000 --seed 7 --embargoes 0,24,96,336 --out results/182-embargosweep.json`.
+
+| embargo (bars) | combined pass count (of 100) | PBO-only pass count (of 100) | Wilson 95% interval |
+|---|---|---|---|
+| 0 | 0 | 47 | 0.0 to 0.037 |
+| 24 | 0 | 48 | 0.0 to 0.037 |
+| 96 | 0 | 47 | 0.0 to 0.037 |
+| 336 | 0 | 43 | 0.0 to 0.037 |
+
+The pre-registered hypothesis (at most 3 of 100 at every embargo length) was supported. The signals here are moving averages with no labels, and the series are i.i.d. random walks with no serial dependence for an embargo to remove, so a null effect is expected; the result says nothing about real crypto bars or label-overlapping rules. The DSR step is unchanged by the embargo.
+

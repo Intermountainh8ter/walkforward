@@ -69,3 +69,13 @@ Pre-registered metric: `/fractions/3/combined_pass_count` in `results/181-leakfr
 Expected: combined pass count at the 10 percent leak fraction at least 50 of 100 (range 50 to 100).
 
 Falsifier: a combined pass count below 50 of 100 at the 10 percent leak fraction, or a zero-leak control pass count above 1 of 100.
+
+## 2026-11-16T12:13:41Z embargosweep proposal:5c98ee87dec3ceb272162c2836b23a8ad0b9c45b6f7a70bfdb01218091027376
+
+Hypothesis: on 100 seeded zero-drift random-walk series of 20,000 bars (seed 7, sma grid fast=10,20,50 slow=100,200,400, 15 bps per fill, 8 CSCV blocks), dropping e bars at each end of every CSCV block (an embargo on each side of every block boundary) leaves the combined gate (DSR >= 0.95 and PBO <= 0.5) passing at most 3 of 100 series at every embargo length e in 0, 24, 96 and 336 bars, so the embargo does not change the null pass count by more than 3.
+
+Pre-registered metric: `/embargo_sweep/0/null_pass_count` in `results/182-embargosweep.json`.
+
+Expected: null pass count at embargo 0 is at most 3 of 100 (range 0 to 3), and no embargo length differs from it by more than 3.
+
+Falsifier: any embargo length with a combined-gate pass count above 3 of 100, or counts at two embargo lengths differing by more than 3.

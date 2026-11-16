@@ -1,0 +1,66 @@
+{
+  "config": {
+    "bars": 20000,
+    "cscv_blocks": 8,
+    "embargo": "bars dropped at both ends of every CSCV block, in and out of sample",
+    "fee_bps": 10.0,
+    "gate": "DSR >= 0.95 and PBO <= 0.5, full sample",
+    "grid": "fast=10,20,50;slow=100,200,400",
+    "seed": 7,
+    "series": 100,
+    "slippage_bps": 5.0
+  },
+  "embargo_sweep": [
+    {
+      "dsr_only_pass_count": 0,
+      "embargo_bars": 0,
+      "null_pass_count": 0,
+      "null_pass_rate": 0.0,
+      "pbo_only_pass_count": 47,
+      "wilson95_high": 0.03699480747600191,
+      "wilson95_low": 0.0
+    },
+    {
+      "dsr_only_pass_count": 0,
+      "embargo_bars": 24,
+      "null_pass_count": 0,
+      "null_pass_rate": 0.0,
+      "pbo_only_pass_count": 48,
+      "wilson95_high": 0.03699480747600191,
+      "wilson95_low": 0.0
+    },
+    {
+      "dsr_only_pass_count": 0,
+      "embargo_bars": 96,
+      "null_pass_count": 0,
+      "null_pass_rate": 0.0,
+      "pbo_only_pass_count": 47,
+      "wilson95_high": 0.03699480747600191,
+      "wilson95_low": 0.0
+    },
+    {
+      "dsr_only_pass_count": 0,
+      "embargo_bars": 336,
+      "null_pass_count": 0,
+      "null_pass_rate": 0.0,
+      "pbo_only_pass_count": 43,
+      "wilson95_high": 0.03699480747600191,
+      "wilson95_low": 0.0
+    }
+  ],
+  "provenance": {
+    "command": "cargo run --locked --release -q -- embargosweep --series 100 --bars 20000 --seed 7 --embargoes 0,24,96,336 --out results/182-embargosweep.json",
+    "data_sources": [
+      {
+        "license": "none (generated)",
+        "url": "synthetic seeded random-walk series generated in-process"
+      }
+    ],
+    "hardware": "linux x86_64",
+    "seeds": [
+      7
+    ],
+    "started_at": "2026-11-16T12:13:51Z",
+    "wall_s": 41.0
+  }
+}
