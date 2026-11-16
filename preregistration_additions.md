@@ -19,3 +19,13 @@ Pre-registered metric: `/gates/null_pass_count` in `results/162-nullpass.json`.
 Expected: the metric is at most 10 of 100 (range 0 to 10). A Wilson 95% interval is reported beside it.
 
 Falsifier: 11 or more of the 100 noise series pass both gates, meaning the combined gate has a false-positive rate above 10% on noise.
+
+## 2026-11-16T10:23:38Z powersweep proposal:249b648e6dcce38b9c25e6fca8694f8514b326c7bc5fdee480bc4e7b8e4b3b61
+
+Hypothesis: on seeded 20,000-bar hourly synthetic series with planted per-bar drift of 0, 1, 2, 4 and 8 basis points (100 series per size, seed 7, the same sma grid, 15 bps cost per fill and 8 CSCV blocks as iteration 162), the combined gate DSR >= 0.95 and PBO <= 0.5 passes at least 50 of 100 series at the largest drift, and the pass count never decreases as drift grows.
+
+Pre-registered metric: `/gates/power_by_effect_size/8bps/pass_rate` in `results/163-powersweep.json`.
+
+Expected: the pass rate at 8 bps per bar drift is at least 0.50 (range 0.5 to 1.0), above the pass rate at zero drift.
+
+Falsifier: a pass rate below 0.50 at the largest drift, or a pass count that falls as drift rises, or a nonzero pass count at zero drift beyond the iteration 162 result.

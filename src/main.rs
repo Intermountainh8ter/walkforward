@@ -106,6 +106,20 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Plant a per-bar drift of known size in seeded random walks and report the combined gate
+    /// pass rate per drift size, with Wilson intervals.
+    Powersweep {
+        #[arg(long, default_value_t = 100)]
+        series: usize,
+        #[arg(long, default_value_t = 20000)]
+        bars: usize,
+        #[arg(long, default_value_t = 7)]
+        seed: u64,
+        #[arg(long, value_delimiter = ',', default_value = "0,1,2,4,8")]
+        drifts_bps: Vec<f64>,
+        #[arg(long)]
+        out: PathBuf,
+    },
 }
 
 fn report(dir: &PathBuf, readme: &PathBuf) -> anyhow::Result<()> {
@@ -758,12 +772,17 @@ pub fn truncation_flags(strat: &dyn Strategy, bars: &[Bar], p: &Params, stride: 
 }
 
 fn synthetic_bars(rng: &mut rand_pcg::Pcg64, n: usize) -> Vec<Bar> {
+    synthetic_bars_drift(rng, n, 0.0)
+}
+
+/// Same walk with a fixed per-bar return `drift` (a fraction, not bps) added to every bar.
+fn synthetic_bars_drift(rng: &mut rand_pcg::Pcg64, n: usize, drift: f64) -> Vec<Bar> {
     use rand::Rng;
     let mut px = 100.0f64;
     (0..n)
         .map(|i| {
             let open = px;
-            px *= 1.0 + (rng.random::<f64>() - 0.5) * 0.02;
+            px *= 1.0 + (rng.random::<f64>() - 0.5) * 0.02 + drift;
             let (hi, lo) = (open.max(px) * 1.001, open.min(px) * 0.999);
             Bar { ts_ms: i as i64 * 3_600_000, open, high: hi, low: lo, close: px, volume: 1.0 }
         })
@@ -957,6 +976,64 @@ fn nullpass(series: usize, bars: usize, seed: u64, out: &PathBuf) -> anyhow::Res
     Ok(())
 }
 
+/// Returns (json by drift key, pass counts in input order). Each drift reuses the same seed, so
+/// the noise paths are identical across effect sizes and only the planted drift differs.
+pub fn powersweep_count(series: usize, n_bars: usize, seed: u64, blocks: usize, drifts_bps: &[f64]) -> (serde_json::Value, Vec<usize>) {
+    use rand::SeedableRng;
+    let costs = Costs { fee_bps: 10.0, slippage_bps: 5.0 };
+    let mut map = serde_json::Map::new();
+    let mut counts = Vec::new();
+    for &d in drifts_bps {
+        let mut rng = rand_pcg::Pcg64::seed_from_u64(seed);
+        let (mut pass, mut dsr_pass, mut pbo_pass) = (0usize, 0usize, 0usize);
+        for _ in 0..series {
+            let b = synthetic_bars_drift(&mut rng, n_bars, d / 10_000.0);
+            let (dsr, pbo) = gate_on_series(&b, &costs, blocks);
+            let (d_ok, p_ok) = (dsr >= 0.95, pbo <= 0.5);
+            dsr_pass += d_ok as usize;
+            pbo_pass += p_ok as usize;
+            pass += (d_ok && p_ok) as usize;
+        }
+        let (lo, hi) = wilson(pass, series);
+        map.insert(
+            format!("{d}bps"),
+            serde_json::json!({
+                "drift_bps_per_bar": d, "pass_count": pass,
+                "pass_rate": pass as f64 / series.max(1) as f64,
+                "wilson95_low": lo, "wilson95_high": hi,
+                "dsr_only_pass_count": dsr_pass, "pbo_only_pass_count": pbo_pass,
+            }),
+        );
+        counts.push(pass);
+    }
+    (serde_json::Value::Object(map), counts)
+}
+
+fn powersweep(series: usize, bars: usize, seed: u64, drifts: &[f64], out: &PathBuf) -> anyhow::Result<()> {
+    let t0 = std::time::Instant::now();
+    let started = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs();
+    let blocks = 8;
+    let (by, counts) = powersweep_count(series, bars, seed, blocks, drifts);
+    let monotone = counts.windows(2).all(|w| w[1] >= w[0]);
+    let list = drifts.iter().map(|d| d.to_string()).collect::<Vec<_>>().join(",");
+    let doc = serde_json::json!({
+        "gates": { "power_by_effect_size": by, "pass_count_non_decreasing_in_drift": monotone },
+        "config": { "series": series, "bars": bars, "seed": seed, "cscv_blocks": blocks, "drifts_bps": drifts,
+                    "grid": "sma fast=10,20,50;slow=100,200,400", "fee_bps": 10.0, "slippage_bps": 5.0,
+                    "gate": "DSR >= 0.95 and PBO <= 0.5, full sample" },
+        "provenance": {
+            "started_at": utc_iso(started),
+            "seeds": [seed],
+            "command": format!("cargo run --locked --release -q -- powersweep --series {series} --bars {bars} --seed {seed} --drifts-bps {list} --out {}", out.display()),
+            "hardware": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
+            "wall_s": t0.elapsed().as_secs_f64().round(),
+            "data_sources": [{"url": "synthetic seeded random-walk series with planted drift, generated in-process", "license": "none (generated)"}],
+        },
+    });
+    std::fs::write(out, serde_json::to_string_pretty(&doc)? + "\n")?;
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
@@ -968,6 +1045,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::Report { dir, readme } => report(&dir, &readme),
         Cmd::Cleangrade { pairs, bars, seed, out } => cleangrade(pairs, bars, seed, &out),
         Cmd::Nullpass { series, bars, seed, out } => nullpass(series, bars, seed, &out),
+        Cmd::Powersweep { series, bars, seed, drifts_bps, out } => powersweep(series, bars, seed, &drifts_bps, &out),
     }
 }
 
@@ -1092,6 +1170,16 @@ mod tests {
         assert_eq!(a, b);
         assert_eq!(ca, cb);
         assert!(ca <= 3);
+    }
+
+    #[test]
+    fn powersweep_is_deterministic_and_zero_drift_matches_nullpass() {
+        let (a, ca) = powersweep_count(3, 1500, 7, 4, &[0.0, 8.0]);
+        let (b, _) = powersweep_count(3, 1500, 7, 4, &[0.0, 8.0]);
+        assert_eq!(a, b);
+        let (_, null) = nullpass_count(3, 1500, 7, 4);
+        assert_eq!(ca[0], null);
+        assert!(a.get("8bps").is_some());
     }
 
     #[test]

@@ -1,0 +1,84 @@
+{
+  "config": {
+    "bars": 20000,
+    "cscv_blocks": 8,
+    "drifts_bps": [
+      0.0,
+      1.0,
+      2.0,
+      4.0,
+      8.0
+    ],
+    "fee_bps": 10.0,
+    "gate": "DSR >= 0.95 and PBO <= 0.5, full sample",
+    "grid": "sma fast=10,20,50;slow=100,200,400",
+    "seed": 7,
+    "series": 100,
+    "slippage_bps": 5.0
+  },
+  "gates": {
+    "pass_count_non_decreasing_in_drift": true,
+    "power_by_effect_size": {
+      "0bps": {
+        "drift_bps_per_bar": 0.0,
+        "dsr_only_pass_count": 0,
+        "pass_count": 0,
+        "pass_rate": 0.0,
+        "pbo_only_pass_count": 47,
+        "wilson95_high": 0.03699480747600191,
+        "wilson95_low": 0.0
+      },
+      "1bps": {
+        "drift_bps_per_bar": 1.0,
+        "dsr_only_pass_count": 33,
+        "pass_count": 14,
+        "pass_rate": 0.14,
+        "pbo_only_pass_count": 43,
+        "wilson95_high": 0.22137360383807236,
+        "wilson95_low": 0.08526265754464905
+      },
+      "2bps": {
+        "drift_bps_per_bar": 2.0,
+        "dsr_only_pass_count": 96,
+        "pass_count": 54,
+        "pass_rate": 0.54,
+        "pbo_only_pass_count": 57,
+        "wilson95_high": 0.6343935614666815,
+        "wilson95_low": 0.44264685393523856
+      },
+      "4bps": {
+        "drift_bps_per_bar": 4.0,
+        "dsr_only_pass_count": 100,
+        "pass_count": 82,
+        "pass_rate": 0.82,
+        "pbo_only_pass_count": 82,
+        "wilson95_high": 0.8829986834574896,
+        "wilson95_low": 0.7333246397578691
+      },
+      "8bps": {
+        "drift_bps_per_bar": 8.0,
+        "dsr_only_pass_count": 100,
+        "pass_count": 95,
+        "pass_rate": 0.95,
+        "pbo_only_pass_count": 95,
+        "wilson95_high": 0.9784566385436864,
+        "wilson95_low": 0.8882480347279118
+      }
+    }
+  },
+  "provenance": {
+    "command": "cargo run --locked --release -q -- powersweep --series 100 --bars 20000 --seed 7 --drifts-bps 0,1,2,4,8 --out results/163-powersweep.json",
+    "data_sources": [
+      {
+        "license": "none (generated)",
+        "url": "synthetic seeded random-walk series with planted drift, generated in-process"
+      }
+    ],
+    "hardware": "linux x86_64",
+    "seeds": [
+      7
+    ],
+    "started_at": "2026-11-16T10:24:00Z",
+    "wall_s": 54.0
+  }
+}

@@ -43,6 +43,20 @@ OOS = every out-of-sample bar concatenated, parameters chosen only on the preced
 
 Recall alone cannot separate always-flag from the truncation reviewer; the clean controls can. The flawed strategy and the truncation check are both written by the same author, so this shows the grader works, not that the check catches every real leak. The series are synthetic random walks.
 
+## Gate power sweep (`powersweep`)
+
+`powersweep` plants a fixed per-bar drift in seeded synthetic random walks (100 series of 20,000 bars each, seed 7, the sma grid, 15 bps per fill, 8 CSCV blocks) and reports how often the combined gate (DSR >= 0.95 and PBO <= 0.5) passes. Results in `results/163-powersweep.json`, run with `cargo run --locked --release -q -- powersweep --series 100 --bars 20000 --seed 7 --drifts-bps 0,1,2,4,8 --out results/163-powersweep.json`.
+
+| planted drift per bar | combined pass rate | Wilson 95% interval |
+|---|---|---|
+| 0 bps | 0.0 | 0.0 to 0.037 |
+| 1 bps | 0.14 | 0.085 to 0.221 |
+| 2 bps | 0.54 | 0.443 to 0.634 |
+| 4 bps | 0.82 | 0.733 to 0.883 |
+| 8 bps | 0.95 | 0.888 to 0.978 |
+
+The pass count did not fall as drift rose. The series are synthetic i.i.d. random walks with a constant drift, which is easier to detect than a real regime-dependent edge; the result says nothing about real crypto bars.
+
 ## Usage
 
 ```
