@@ -79,3 +79,13 @@ Pre-registered metric: `/embargo_sweep/0/null_pass_count` in `results/182-embarg
 Expected: null pass count at embargo 0 is at most 3 of 100 (range 0 to 3), and no embargo length differs from it by more than 3.
 
 Falsifier: any embargo length with a combined-gate pass count above 3 of 100, or counts at two embargo lengths differing by more than 3.
+
+## 2026-11-16T12:18:43Z realitycheck proposal:5a44b29e90c7390b316078d27e23c3d0d8fa5fe9357e820ff8841f6c77ed743c
+
+Hypothesis: on 100 seeded zero-drift random walks (20,000 bars, sma grid, 15 bps per fill, 1000 stationary-bootstrap draws, mean block length 24), White's Reality Check at p < 0.05 passes at most 10 of 100 series, so it does not reject more spurious rules than its nominal size allows.
+
+Pre-registered metric: `/reality_check/null_pass_count` in `results/183-realitycheck.json`.
+
+Expected: null pass count at most 10 of 100 (range 0 to 10).
+
+Falsifier: a Reality Check null pass count above 10 of 100.

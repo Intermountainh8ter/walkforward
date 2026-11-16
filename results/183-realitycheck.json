@@ -1,0 +1,42 @@
+{
+  "config": {
+    "bars": 20000,
+    "bootstrap_draws": 1000,
+    "cscv_blocks": 8,
+    "fee_bps": 10.0,
+    "gate": "DSR >= 0.95 and PBO <= 0.5, full sample",
+    "grid": "sma fast=10,20,50;slow=100,200,400",
+    "mean_block": 24.0,
+    "reality_check": "max over configs of sqrt(n) mean net return vs zero benchmark, centred stationary bootstrap, p < 0.05",
+    "seed": 7,
+    "series": 100,
+    "slippage_bps": 5.0
+  },
+  "provenance": {
+    "command": "cargo run --locked --release -q -- realitycheck --series 100 --bars 20000 --seed 7 --bootstrap-draws 1000 --mean-block 24 --out results/183-realitycheck.json",
+    "data_sources": [
+      {
+        "license": "none (generated)",
+        "url": "synthetic seeded random-walk series generated in-process"
+      }
+    ],
+    "hardware": "linux x86_64",
+    "seeds": [
+      7
+    ],
+    "started_at": "2026-11-16T12:19:21Z",
+    "wall_s": 46.0
+  },
+  "reality_check": {
+    "dsr_only_pass_count": 0,
+    "mean_p_value": 0.6910089910089912,
+    "null_pass_count": 2,
+    "null_pass_rate": 0.02,
+    "pbo_only_pass_count": 47,
+    "rc_and_dsr_pass_count": 0,
+    "rc_and_pbo_pass_count": 2,
+    "rc_dsr_pbo_pass_count": 0,
+    "wilson95_high": 0.07001316294199365,
+    "wilson95_low": 0.005501852234968185
+  }
+}

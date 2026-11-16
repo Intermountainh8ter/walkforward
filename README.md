@@ -140,3 +140,18 @@ The pre-registered hypothesis (recall at least 90 of 100, false positives at mos
 
 The pre-registered hypothesis (at most 3 of 100 at every embargo length) was supported. The signals here are moving averages with no labels, and the series are i.i.d. random walks with no serial dependence for an embargo to remove, so a null effect is expected; the result says nothing about real crypto bars or label-overlapping rules. The DSR step is unchanged by the embargo.
 
+
+## Reality Check gate test (`realitycheck`)
+
+`realitycheck` runs White's Reality Check (stationary bootstrap, 1000 draws, mean block length 24, zero benchmark) on the sma grid over 100 seeded zero-drift random walks (20,000 bars each, seed 7, 15 bps per fill, 8 CSCV blocks), and reports it alone and beside the DSR and PBO gates. Results in `results/183-realitycheck.json`, run with `cargo run --locked --release -q -- realitycheck --series 100 --bars 20000 --seed 7 --bootstrap-draws 1000 --mean-block 24 --out results/183-realitycheck.json`.
+
+| gate | pass count (of 100) |
+|---|---|
+| Reality Check, p < 0.05 | 2 (Wilson 95% interval 0.006 to 0.070) |
+| DSR only | 0 |
+| PBO only | 47 |
+| Reality Check and DSR | 0 |
+| Reality Check and PBO | 2 |
+| all three | 0 |
+
+The pre-registered hypothesis (Reality Check passes at most 10 of 100) was supported. Power was not tested here, and the series are synthetic random walks with a nine-configuration grid.

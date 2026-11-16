@@ -168,6 +168,21 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// White's Reality Check (stationary bootstrap) null pass count beside DSR and PBO.
+    Realitycheck {
+        #[arg(long, default_value_t = 100)]
+        series: usize,
+        #[arg(long, default_value_t = 20000)]
+        bars: usize,
+        #[arg(long, default_value_t = 7)]
+        seed: u64,
+        #[arg(long, default_value_t = 1000)]
+        bootstrap_draws: usize,
+        #[arg(long, default_value_t = 24.0)]
+        mean_block: f64,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Combined gate pass count on zero-drift random walks per CSCV embargo length.
     Embargosweep {
         #[arg(long, default_value_t = 100)]
@@ -1442,6 +1457,117 @@ fn gridsweep(series: usize, bars: usize, seed: u64, out: &PathBuf) -> anyhow::Re
     Ok(())
 }
 
+/// White's Reality Check p-value against a zero benchmark: statistic max_k sqrt(n) mean_k, null
+/// distribution from a centred stationary bootstrap (Politis and Romano) with geometric blocks.
+pub fn reality_check_p(rets: &[Vec<f64>], draws: usize, mean_block: f64, rng: &mut rand_pcg::Pcg64) -> f64 {
+    use rand::Rng;
+    let n = rets[0].len();
+    let means: Vec<f64> = rets.iter().map(|r| r.iter().sum::<f64>() / n as f64).collect();
+    let v = means.iter().cloned().fold(f64::NEG_INFINITY, f64::max) * (n as f64).sqrt();
+    let q = 1.0 / mean_block.max(1.0);
+    let mut idx = vec![0usize; n];
+    let mut ge = 0usize;
+    for _ in 0..draws {
+        let mut cur = rng.random_range(0..n);
+        for slot in idx.iter_mut() {
+            if rng.random::<f64>() < q {
+                cur = rng.random_range(0..n);
+            } else {
+                cur = (cur + 1) % n;
+            }
+            *slot = cur;
+        }
+        let mut vstar = f64::NEG_INFINITY;
+        for (ci, r) in rets.iter().enumerate() {
+            let m = idx.iter().map(|&i| r[i]).sum::<f64>() / n as f64;
+            vstar = vstar.max(m - means[ci]);
+        }
+        if vstar * (n as f64).sqrt() >= v {
+            ge += 1;
+        }
+    }
+    (ge as f64 + 1.0) / (draws as f64 + 1.0)
+}
+
+/// Returns json and (reality-check-only, combined-with-DSR-and-PBO) pass counts on zero-drift paths.
+pub fn realitycheck_count(series: usize, n_bars: usize, seed: u64, blocks: usize, draws: usize, mean_block: f64) -> (serde_json::Value, (usize, usize)) {
+    let costs = Costs { fee_bps: 10.0, slippage_bps: 5.0 };
+    let mut rng = rand_pcg::Pcg64::seed_from_u64(seed);
+    let mut brng = rand_pcg::Pcg64::seed_from_u64(seed ^ 0x7263_6865);
+    let (mut rc_pass, mut dsr_pass, mut pbo_pass, mut all_pass, mut rc_dsr, mut rc_pbo) = (0usize, 0usize, 0usize, 0usize, 0usize, 0usize);
+    let mut p_sum = 0.0;
+    for _ in 0..series {
+        let bars = synthetic_bars(&mut rng, n_bars);
+        let mut configs = Vec::new();
+        for f in [10.0, 20.0, 50.0] {
+            for sl in [100.0, 200.0, 400.0] {
+                let mut p = Params::new();
+                p.insert("fast".into(), f);
+                p.insert("slow".into(), sl);
+                configs.push(p);
+            }
+        }
+        let start = configs.iter().map(|c| SmaCross.warmup(c)).max().unwrap_or(0) + 1;
+        let mut matrix = vec![vec![0.0; configs.len()]; bars.len() - start];
+        let (mut srs, mut rets) = (Vec::new(), Vec::new());
+        for (ci, c) in configs.iter().enumerate() {
+            let (r, _) = simulate(&SmaCross, &bars, c, &costs, start, bars.len());
+            for (t, v) in r.iter().enumerate() {
+                matrix[t][ci] = *v;
+            }
+            srs.push(sharpe_per_bar(&r));
+            rets.push(r);
+        }
+        let best = (0..configs.len()).max_by(|&a, &b| srs[a].partial_cmp(&srs[b]).unwrap()).unwrap();
+        let dsr = deflated_sharpe(srs[best], &srs, &rets[best]);
+        let (pbo, _) = pbo_cscv(&matrix, configs.len(), blocks);
+        let p = reality_check_p(&rets, draws, mean_block, &mut brng);
+        let (rc_ok, d_ok, p_ok) = (p < 0.05, dsr >= 0.95, pbo <= 0.5);
+        p_sum += p;
+        rc_pass += rc_ok as usize;
+        dsr_pass += d_ok as usize;
+        pbo_pass += p_ok as usize;
+        rc_dsr += (rc_ok && d_ok) as usize;
+        rc_pbo += (rc_ok && p_ok) as usize;
+        all_pass += (rc_ok && d_ok && p_ok) as usize;
+    }
+    let (lo, hi) = wilson(rc_pass, series);
+    let n = series.max(1) as f64;
+    let doc = serde_json::json!({
+        "null_pass_count": rc_pass, "null_pass_rate": rc_pass as f64 / n,
+        "wilson95_low": lo, "wilson95_high": hi, "mean_p_value": p_sum / n,
+        "dsr_only_pass_count": dsr_pass, "pbo_only_pass_count": pbo_pass,
+        "rc_and_dsr_pass_count": rc_dsr, "rc_and_pbo_pass_count": rc_pbo,
+        "rc_dsr_pbo_pass_count": all_pass,
+    });
+    (doc, (rc_pass, all_pass))
+}
+
+fn realitycheck(series: usize, bars: usize, seed: u64, draws: usize, mean_block: f64, out: &PathBuf) -> anyhow::Result<()> {
+    let t0 = std::time::Instant::now();
+    let started = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs();
+    let blocks = 8;
+    let (rc, _) = realitycheck_count(series, bars, seed, blocks, draws, mean_block);
+    let doc = serde_json::json!({
+        "reality_check": rc,
+        "config": { "series": series, "bars": bars, "seed": seed, "cscv_blocks": blocks,
+                    "grid": "sma fast=10,20,50;slow=100,200,400", "fee_bps": 10.0, "slippage_bps": 5.0,
+                    "bootstrap_draws": draws, "mean_block": mean_block,
+                    "reality_check": "max over configs of sqrt(n) mean net return vs zero benchmark, centred stationary bootstrap, p < 0.05",
+                    "gate": "DSR >= 0.95 and PBO <= 0.5, full sample" },
+        "provenance": {
+            "started_at": utc_iso(started),
+            "seeds": [seed],
+            "command": format!("cargo run --locked --release -q -- realitycheck --series {series} --bars {bars} --seed {seed} --bootstrap-draws {draws} --mean-block {mean_block} --out {}", out.display()),
+            "hardware": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
+            "wall_s": t0.elapsed().as_secs_f64().round(),
+            "data_sources": [{"url": "synthetic seeded random-walk series generated in-process", "license": "none (generated)"}],
+        },
+    });
+    std::fs::write(out, serde_json::to_string_pretty(&doc)? + "\n")?;
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
@@ -1458,6 +1584,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::Gridsweep { series, bars, seed, out } => gridsweep(series, bars, seed, &out),
         Cmd::Leakfrac { series, bars, seed, fractions, out } => leakfrac(series, bars, seed, &fractions, &out),
         Cmd::Embargosweep { series, bars, seed, embargoes, out } => embargosweep(series, bars, seed, &embargoes, &out),
+        Cmd::Realitycheck { series, bars, seed, bootstrap_draws, mean_block, out } => realitycheck(series, bars, seed, bootstrap_draws, mean_block, &out),
         Cmd::Powersweep { series, bars, seed, drifts_bps, out } => powersweep(series, bars, seed, &drifts_bps, &out),
     }
 }
@@ -1628,6 +1755,19 @@ mod tests {
         p.insert("fast".into(), 10.0);
         p.insert("slow".into(), 100.0);
         assert!(truncation_flags(&LookaheadGrid, &bs, &p, 1));
+    }
+
+    #[test]
+    fn realitycheck_is_deterministic_and_detects_planted_drift() {
+        let (a, ca) = realitycheck_count(2, 1500, 7, 4, 50, 24.0);
+        let (b, _) = realitycheck_count(2, 1500, 7, 4, 50, 24.0);
+        assert_eq!(a, b);
+        assert!(ca.0 <= 2);
+        let mut rng = rand_pcg::Pcg64::seed_from_u64(1);
+        let strong = vec![(0..2000).map(|i| 0.01 + 0.001 * ((i % 7) as f64 - 3.0)).collect::<Vec<f64>>()];
+        assert!(reality_check_p(&strong, 100, 24.0, &mut rng) < 0.05);
+        let flat = vec![(0..2000).map(|i| 0.001 * ((i % 7) as f64 - 3.0)).collect::<Vec<f64>>()];
+        assert!(reality_check_p(&flat, 100, 24.0, &mut rng) > 0.05);
     }
 
     #[test]
