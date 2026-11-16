@@ -1,0 +1,110 @@
+{
+  "config": {
+    "bars": 20000,
+    "cscv_blocks": 8,
+    "fee_bps": 10.0,
+    "gate": "DSR >= 0.95 and PBO <= 0.5, full sample",
+    "seed": 7,
+    "series": 100,
+    "slippage_bps": 5.0,
+    "strategy": "sma",
+    "trial_count": "equal to the number of configurations searched"
+  },
+  "provenance": {
+    "command": "cargo run --locked --release -q -- gridsweep --series 100 --bars 20000 --seed 7 --out results/166-gridsweep.json",
+    "data_sources": [
+      {
+        "license": "none (generated)",
+        "url": "synthetic seeded random-walk series generated in-process"
+      }
+    ],
+    "hardware": "linux x86_64",
+    "seeds": [
+      7
+    ],
+    "started_at": "2026-11-16T10:37:51Z",
+    "wall_s": 73.0
+  },
+  "sizes": [
+    {
+      "combined_pass_count": 1,
+      "combined_pass_rate": 0.01,
+      "configs": 4,
+      "dsr_only_pass_count": 2,
+      "fast": [
+        10.0,
+        20.0
+      ],
+      "pbo_only_pass_count": 58,
+      "slow": [
+        100.0,
+        150.0
+      ],
+      "wilson95_high": 0.0544875247609346,
+      "wilson95_low": 0.0017673865655472645
+    },
+    {
+      "combined_pass_count": 0,
+      "combined_pass_rate": 0.0,
+      "configs": 9,
+      "dsr_only_pass_count": 1,
+      "fast": [
+        10.0,
+        20.0,
+        35.0
+      ],
+      "pbo_only_pass_count": 49,
+      "slow": [
+        100.0,
+        150.0,
+        200.0
+      ],
+      "wilson95_high": 0.03699480747600191,
+      "wilson95_low": 0.0
+    },
+    {
+      "combined_pass_count": 0,
+      "combined_pass_rate": 0.0,
+      "configs": 16,
+      "dsr_only_pass_count": 0,
+      "fast": [
+        10.0,
+        20.0,
+        35.0,
+        50.0
+      ],
+      "pbo_only_pass_count": 58,
+      "slow": [
+        100.0,
+        150.0,
+        200.0,
+        300.0
+      ],
+      "wilson95_high": 0.03699480747600191,
+      "wilson95_low": 0.0
+    },
+    {
+      "combined_pass_count": 0,
+      "combined_pass_rate": 0.0,
+      "configs": 25,
+      "dsr_only_pass_count": 0,
+      "fast": [
+        10.0,
+        20.0,
+        35.0,
+        50.0,
+        70.0
+      ],
+      "pbo_only_pass_count": 48,
+      "slow": [
+        100.0,
+        150.0,
+        200.0,
+        300.0,
+        400.0
+      ],
+      "wilson95_high": 0.03699480747600191,
+      "wilson95_low": 0.0
+    }
+  ]
+}

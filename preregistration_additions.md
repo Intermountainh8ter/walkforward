@@ -39,3 +39,13 @@ Pre-registered metric: `/arms/leaky/combined_pass_count` in `results/165-leakpas
 Expected: leaky combined pass count at least 50 of 100 (range 50 to 100); causal arm stays at 0.
 
 Falsifier: a leaky-arm combined pass count below 50 of 100, meaning the DSR and PBO gates reject most look-ahead rules on their own.
+
+## 2026-11-16T10:37:24Z gridsweep proposal:7ef0fa49e19ca9df550a099ec146170b6576a652942cd22a1486b4cd2cf9c340
+
+Hypothesis: on 100 seeded zero-drift random-walk series of 20,000 bars (seed 7, 15 bps per fill, 8 CSCV blocks), the combined gate (DSR >= 0.95 and PBO <= 0.5) passes on at most 5 of 100 series at the largest grid (25 configurations), with the DSR trial count equal to the true grid size.
+
+Pre-registered metric: `/sizes/3/combined_pass_count` in `results/166-gridsweep.json`.
+
+Expected: combined pass count at the 25-configuration grid is at most 5 of 100 (range 0 to 5).
+
+Falsifier: a combined pass count above 5 of 100 at the 25-configuration grid.

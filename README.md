@@ -68,6 +68,19 @@ The pass count did not fall as drift rose. The series are synthetic i.i.d. rando
 
 The pre-registered hypothesis (leaky arm passes at least 50 of 100) was refuted. The leak here is a one-bar shift on a slow moving-average crossover, which barely changes the position, so it earns little; a stronger leak (such as the `cleangrade` flawed strategy) was not tested. The series are synthetic random walks.
 
+## Grid-size null sweep (`gridsweep`)
+
+`gridsweep` reruns the zero-drift null (100 series of 20,000 bars each, seed 7, 15 bps per fill, 8 CSCV blocks) with sma grids of 4, 9, 16 and 25 configurations, the DSR trial count equal to the grid searched. Results in `results/166-gridsweep.json`, run with `cargo run --locked --release -q -- gridsweep --series 100 --bars 20000 --seed 7 --out results/166-gridsweep.json`.
+
+| configurations | combined pass count (of 100) | PBO-only pass count (of 100) |
+|---|---|---|
+| 4 | 1 | 58 |
+| 9 | 0 | 49 |
+| 16 | 0 | 58 |
+| 25 | 0 | 48 |
+
+The pre-registered hypothesis (at most 5 of 100 at 25 configurations) held. The trial count was stated honestly here; this does not test an understated count. The series are synthetic random walks.
+
 ## Usage
 
 ```

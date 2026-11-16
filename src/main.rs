@@ -118,6 +118,17 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Rerun the zero-drift sma null with 4, 9, 16 and 25 configurations and count combined passes.
+    Gridsweep {
+        #[arg(long, default_value_t = 100)]
+        series: usize,
+        #[arg(long, default_value_t = 20000)]
+        bars: usize,
+        #[arg(long, default_value_t = 7)]
+        seed: u64,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Plant a per-bar drift of known size in seeded random walks and report the combined gate
     /// pass rate per drift size, with Wilson intervals.
     Powersweep {
@@ -922,9 +933,14 @@ impl Strategy for LeakySma {
 }
 
 pub fn gate_on_series_with(strat: &dyn Strategy, bars: &[Bar], costs: &Costs, blocks: usize) -> (f64, f64) {
+    gate_on_grid(strat, bars, costs, blocks, &[10.0, 20.0, 50.0], &[100.0, 200.0, 400.0])
+}
+
+/// Same gates over the full cross product of the given fast and slow windows.
+pub fn gate_on_grid(strat: &dyn Strategy, bars: &[Bar], costs: &Costs, blocks: usize, fasts: &[f64], slows: &[f64]) -> (f64, f64) {
     let mut configs = Vec::new();
-    for f in [10.0, 20.0, 50.0] {
-        for sl in [100.0, 200.0, 400.0] {
+    for &f in fasts {
+        for &sl in slows {
             let mut p = Params::new();
             p.insert("fast".into(), f);
             p.insert("slow".into(), sl);
@@ -1120,6 +1136,62 @@ fn leakpass(series: usize, bars: usize, seed: u64, out: &PathBuf) -> anyhow::Res
     Ok(())
 }
 
+const GRID_FASTS: [f64; 5] = [10.0, 20.0, 35.0, 50.0, 70.0];
+const GRID_SLOWS: [f64; 5] = [100.0, 150.0, 200.0, 300.0, 400.0];
+
+/// Returns json array of per-size results and the combined pass counts. Grid side k uses the first
+/// k fast and first k slow windows; every size sees identical zero-drift paths.
+pub fn gridsweep_count(series: usize, n_bars: usize, seed: u64, blocks: usize, sides: &[usize]) -> (serde_json::Value, Vec<usize>) {
+    let costs = Costs { fee_bps: 10.0, slippage_bps: 5.0 };
+    let mut arr = Vec::new();
+    let mut counts = Vec::new();
+    for &k in sides {
+        let mut rng = rand_pcg::Pcg64::seed_from_u64(seed);
+        let (mut pass, mut dsr_pass, mut pbo_pass) = (0usize, 0usize, 0usize);
+        for _ in 0..series {
+            let b = synthetic_bars(&mut rng, n_bars);
+            let (dsr, pbo) = gate_on_grid(&SmaCross, &b, &costs, blocks, &GRID_FASTS[..k], &GRID_SLOWS[..k]);
+            let (d_ok, p_ok) = (dsr >= 0.95, pbo <= 0.5);
+            dsr_pass += d_ok as usize;
+            pbo_pass += p_ok as usize;
+            pass += (d_ok && p_ok) as usize;
+        }
+        let (lo, hi) = wilson(pass, series);
+        arr.push(serde_json::json!({
+            "configs": k * k, "fast": &GRID_FASTS[..k], "slow": &GRID_SLOWS[..k],
+            "combined_pass_count": pass, "combined_pass_rate": pass as f64 / series.max(1) as f64,
+            "wilson95_low": lo, "wilson95_high": hi,
+            "dsr_only_pass_count": dsr_pass, "pbo_only_pass_count": pbo_pass,
+        }));
+        counts.push(pass);
+    }
+    (serde_json::Value::Array(arr), counts)
+}
+
+fn gridsweep(series: usize, bars: usize, seed: u64, out: &PathBuf) -> anyhow::Result<()> {
+    let t0 = std::time::Instant::now();
+    let started = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs();
+    let blocks = 8;
+    let (sizes, _) = gridsweep_count(series, bars, seed, blocks, &[2, 3, 4, 5]);
+    let doc = serde_json::json!({
+        "sizes": sizes,
+        "config": { "series": series, "bars": bars, "seed": seed, "cscv_blocks": blocks,
+                    "strategy": "sma", "fee_bps": 10.0, "slippage_bps": 5.0,
+                    "trial_count": "equal to the number of configurations searched",
+                    "gate": "DSR >= 0.95 and PBO <= 0.5, full sample" },
+        "provenance": {
+            "started_at": utc_iso(started),
+            "seeds": [seed],
+            "command": format!("cargo run --locked --release -q -- gridsweep --series {series} --bars {bars} --seed {seed} --out {}", out.display()),
+            "hardware": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
+            "wall_s": t0.elapsed().as_secs_f64().round(),
+            "data_sources": [{"url": "synthetic seeded random-walk series generated in-process", "license": "none (generated)"}],
+        },
+    });
+    std::fs::write(out, serde_json::to_string_pretty(&doc)? + "\n")?;
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
@@ -1132,6 +1204,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::Cleangrade { pairs, bars, seed, out } => cleangrade(pairs, bars, seed, &out),
         Cmd::Nullpass { series, bars, seed, out } => nullpass(series, bars, seed, &out),
         Cmd::Leakpass { series, bars, seed, out } => leakpass(series, bars, seed, &out),
+        Cmd::Gridsweep { series, bars, seed, out } => gridsweep(series, bars, seed, &out),
         Cmd::Powersweep { series, bars, seed, drifts_bps, out } => powersweep(series, bars, seed, &drifts_bps, &out),
     }
 }
@@ -1288,6 +1361,15 @@ mod tests {
         let (_, null) = nullpass_count(3, 1500, 7, 4);
         assert_eq!(ca.0, null);
         assert!(ca.1 <= 3);
+    }
+
+    #[test]
+    fn gridsweep_is_deterministic() {
+        let (a, ca) = gridsweep_count(3, 1500, 7, 4, &[2, 3]);
+        let (b, _) = gridsweep_count(3, 1500, 7, 4, &[2, 3]);
+        assert_eq!(a, b);
+        assert_eq!(a[1]["configs"], 9);
+        assert!(ca.iter().all(|&c| c <= 3));
     }
 
     #[test]
