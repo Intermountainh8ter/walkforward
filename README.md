@@ -100,3 +100,14 @@ It is not a live trading system and holds no exchange credentials. Long-flat, si
 ## License
 
 MIT.
+
+## Matched flaw and clean-control gate test (`cleanpair`)
+
+`cleanpair` runs the DSR and CSCV PBO gates on 100 seeded zero-drift random walks (20,000 bars each, seed 7, 15 bps per fill, 8 CSCV blocks), once with a strong full-lookahead grid and once with the causal sma grid, on identical paths. Results in `results/169-cleanpair.json`, run with `cargo run --locked --release -q -- cleanpair --pairs 100 --bars 20000 --seed 7 --out results/169-cleanpair.json`.
+
+| arm | combined pass count (of 100) | Wilson 95% interval |
+|---|---|---|
+| lookahead (flaw recall) | 100 | 0.963 to 1.0 |
+| causal (clean-control false positives) | 0 | 0.0 to 0.037 |
+
+The pre-registered hypothesis (recall at least 90 of 100, false positives at most 1 of 100) held. The lookahead arm peeks several bars ahead and so is far stronger than the one-bar leak in `leakpass`; any leak that earns this much is easy for the gates to pass, so this tests whether the gates can tell a strong leak from noise, not whether they detect a leak. The series are synthetic random walks.

@@ -94,6 +94,17 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Run the DSR and PBO gates on matched strong-lookahead and causal grids over identical zero-drift paths.
+    Cleanpair {
+        #[arg(long, default_value_t = 100)]
+        pairs: usize,
+        #[arg(long, default_value_t = 20000)]
+        bars: usize,
+        #[arg(long, default_value_t = 7)]
+        seed: u64,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Run the sma grid, deflated Sharpe and CSCV PBO gates on seeded zero-drift random walks and
     /// count how many pure-noise series pass the combined gate (DSR >= 0.95 and PBO <= 0.5).
     Nullpass {
@@ -1136,6 +1147,79 @@ fn leakpass(series: usize, bars: usize, seed: u64, out: &PathBuf) -> anyhow::Res
     Ok(())
 }
 
+/// Strong full-lookahead grid: long when the close `fast/10` bars ahead beats this close by `slow/100` bps.
+pub struct LookaheadGrid;
+impl Strategy for LookaheadGrid {
+    fn target(&self, bars: &[Bar], t: usize, p: &Params) -> f64 {
+        let k = ((p["fast"] / 10.0) as usize).max(1);
+        let thr = 1.0 + p["slow"] / 100.0 * 1e-4;
+        match bars.get(t + k) {
+            Some(n) if n.close > bars[t].close * thr => 1.0,
+            _ => 0.0,
+        }
+    }
+    fn warmup(&self, _: &Params) -> usize {
+        0
+    }
+}
+
+/// Matched pairs on identical zero-drift paths: (flawed combined passes, clean combined passes).
+pub fn cleanpair_count(pairs: usize, n_bars: usize, seed: u64, blocks: usize) -> (serde_json::Value, (usize, usize)) {
+    let costs = Costs { fee_bps: 10.0, slippage_bps: 5.0 };
+    let mut rng = rand_pcg::Pcg64::seed_from_u64(seed);
+    let (mut flawed, mut clean) = (0usize, 0usize);
+    let (mut fd, mut fp, mut cd, mut cp) = (0usize, 0usize, 0usize, 0usize);
+    for _ in 0..pairs {
+        let b = synthetic_bars(&mut rng, n_bars);
+        let (d1, p1) = gate_on_series_with(&LookaheadGrid, &b, &costs, blocks);
+        let (d2, p2) = gate_on_series_with(&SmaCross, &b, &costs, blocks);
+        let (a, bb) = (d1 >= 0.95 && p1 <= 0.5, d2 >= 0.95 && p2 <= 0.5);
+        flawed += a as usize;
+        clean += bb as usize;
+        fd += (d1 >= 0.95) as usize;
+        fp += (p1 <= 0.5) as usize;
+        cd += (d2 >= 0.95) as usize;
+        cp += (p2 <= 0.5) as usize;
+    }
+    let (fl, fh) = wilson(flawed, pairs);
+    let (cl, ch) = wilson(clean, pairs);
+    let n = pairs.max(1) as f64;
+    let v = serde_json::json!([{
+        "pair_count": pairs,
+        "flawed_combined_pass_count": flawed, "flaw_recall": flawed as f64 / n,
+        "flawed_wilson95_low": fl, "flawed_wilson95_high": fh,
+        "flawed_dsr_only_pass_count": fd, "flawed_pbo_only_pass_count": fp,
+        "clean_false_positive_count": clean, "clean_false_positive_rate": clean as f64 / n,
+        "clean_wilson95_low": cl, "clean_wilson95_high": ch,
+        "clean_dsr_only_pass_count": cd, "clean_pbo_only_pass_count": cp,
+    }]);
+    (v, (flawed, clean))
+}
+
+fn cleanpair(pairs: usize, bars: usize, seed: u64, out: &PathBuf) -> anyhow::Result<()> {
+    let t0 = std::time::Instant::now();
+    let started = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs();
+    let blocks = 8;
+    let (arr, _) = cleanpair_count(pairs, bars, seed, blocks);
+    let doc = serde_json::json!({
+        "pairs": arr,
+        "config": { "pairs": pairs, "bars": bars, "seed": seed, "cscv_blocks": blocks,
+                    "flawed_arm": "lookahead grid: horizon fast/10 bars, threshold slow/100 bps, fast=10,20,50 slow=100,200,400",
+                    "clean_arm": "sma fast=10,20,50;slow=100,200,400", "fee_bps": 10.0, "slippage_bps": 5.0,
+                    "gate": "DSR >= 0.95 and PBO <= 0.5, full sample" },
+        "provenance": {
+            "started_at": utc_iso(started),
+            "seeds": [seed],
+            "command": format!("cargo run --locked --release -q -- cleanpair --pairs {pairs} --bars {bars} --seed {seed} --out {}", out.display()),
+            "hardware": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
+            "wall_s": t0.elapsed().as_secs_f64().round(),
+            "data_sources": [{"url": "synthetic seeded random-walk series generated in-process", "license": "none (generated)"}],
+        },
+    });
+    std::fs::write(out, serde_json::to_string_pretty(&doc)? + "\n")?;
+    Ok(())
+}
+
 const GRID_FASTS: [f64; 5] = [10.0, 20.0, 35.0, 50.0, 70.0];
 const GRID_SLOWS: [f64; 5] = [100.0, 150.0, 200.0, 300.0, 400.0];
 
@@ -1204,6 +1288,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::Cleangrade { pairs, bars, seed, out } => cleangrade(pairs, bars, seed, &out),
         Cmd::Nullpass { series, bars, seed, out } => nullpass(series, bars, seed, &out),
         Cmd::Leakpass { series, bars, seed, out } => leakpass(series, bars, seed, &out),
+        Cmd::Cleanpair { pairs, bars, seed, out } => cleanpair(pairs, bars, seed, &out),
         Cmd::Gridsweep { series, bars, seed, out } => gridsweep(series, bars, seed, &out),
         Cmd::Powersweep { series, bars, seed, drifts_bps, out } => powersweep(series, bars, seed, &drifts_bps, &out),
     }
@@ -1361,6 +1446,20 @@ mod tests {
         let (_, null) = nullpass_count(3, 1500, 7, 4);
         assert_eq!(ca.0, null);
         assert!(ca.1 <= 3);
+    }
+
+    #[test]
+    fn cleanpair_is_deterministic_and_lookahead_is_flagged() {
+        let (a, _) = cleanpair_count(3, 1500, 7, 4);
+        let (b, c) = cleanpair_count(3, 1500, 7, 4);
+        assert_eq!(a, b);
+        assert!(c.1 <= 3);
+        let mut rng = rand_pcg::Pcg64::seed_from_u64(7);
+        let bs = synthetic_bars(&mut rng, 600);
+        let mut p = Params::new();
+        p.insert("fast".into(), 10.0);
+        p.insert("slow".into(), 100.0);
+        assert!(truncation_flags(&LookaheadGrid, &bs, &p, 1));
     }
 
     #[test]

@@ -1,0 +1,45 @@
+{
+  "config": {
+    "bars": 20000,
+    "clean_arm": "sma fast=10,20,50;slow=100,200,400",
+    "cscv_blocks": 8,
+    "fee_bps": 10.0,
+    "flawed_arm": "lookahead grid: horizon fast/10 bars, threshold slow/100 bps, fast=10,20,50 slow=100,200,400",
+    "gate": "DSR >= 0.95 and PBO <= 0.5, full sample",
+    "pairs": 100,
+    "seed": 7,
+    "slippage_bps": 5.0
+  },
+  "pairs": [
+    {
+      "clean_dsr_only_pass_count": 0,
+      "clean_false_positive_count": 0,
+      "clean_false_positive_rate": 0.0,
+      "clean_pbo_only_pass_count": 47,
+      "clean_wilson95_high": 0.03699480747600191,
+      "clean_wilson95_low": 0.0,
+      "flaw_recall": 1.0,
+      "flawed_combined_pass_count": 100,
+      "flawed_dsr_only_pass_count": 100,
+      "flawed_pbo_only_pass_count": 100,
+      "flawed_wilson95_high": 0.9999999999999999,
+      "flawed_wilson95_low": 0.9630051925239981,
+      "pair_count": 100
+    }
+  ],
+  "provenance": {
+    "command": "cargo run --locked --release -q -- cleanpair --pairs 100 --bars 20000 --seed 7 --out results/169-cleanpair.json",
+    "data_sources": [
+      {
+        "license": "none (generated)",
+        "url": "synthetic seeded random-walk series generated in-process"
+      }
+    ],
+    "hardware": "linux x86_64",
+    "seeds": [
+      7
+    ],
+    "started_at": "2026-11-16T10:56:01Z",
+    "wall_s": 17.0
+  }
+}

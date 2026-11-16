@@ -49,3 +49,13 @@ Pre-registered metric: `/sizes/3/combined_pass_count` in `results/166-gridsweep.
 Expected: combined pass count at the 25-configuration grid is at most 5 of 100 (range 0 to 5).
 
 Falsifier: a combined pass count above 5 of 100 at the 25-configuration grid.
+
+## 2026-11-16T10:55:36Z cleanpair proposal:d29481c5b1a83a935ec2071359b25cbda522815a56cf9fbc834e66b8e4d63e9e
+
+Hypothesis: on 100 seeded zero-drift random-walk pairs of 20,000 bars (seed 7, 15 bps per fill, 8 CSCV blocks), the combined gate (DSR >= 0.95 and PBO <= 0.5) passes the strong full-lookahead arm on at least 90 of 100 series and passes the causal clean-control arm on at most 1 of 100 series.
+
+Pre-registered metric: `/pairs/0/clean_false_positive_count` in `results/169-cleanpair.json`.
+
+Expected: clean-control pass count at most 1 of 100 (range 0 to 1) while flawed-arm recall is at least 90 of 100.
+
+Falsifier: a flawed-arm combined pass count below 90 of 100, or a clean-control combined pass count above 1 of 100.
