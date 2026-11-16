@@ -94,6 +94,18 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Run the sma grid, deflated Sharpe and CSCV PBO gates on seeded zero-drift random walks and
+    /// count how many pure-noise series pass the combined gate (DSR >= 0.95 and PBO <= 0.5).
+    Nullpass {
+        #[arg(long, default_value_t = 100)]
+        series: usize,
+        #[arg(long, default_value_t = 20000)]
+        bars: usize,
+        #[arg(long, default_value_t = 7)]
+        seed: u64,
+        #[arg(long)]
+        out: PathBuf,
+    },
 }
 
 fn report(dir: &PathBuf, readme: &PathBuf) -> anyhow::Result<()> {
@@ -850,6 +862,101 @@ fn cleangrade(pairs: usize, bars: usize, seed: u64, out: &PathBuf) -> anyhow::Re
     Ok(())
 }
 
+/// Wilson score interval (z = 1.96) for k successes in n trials.
+pub fn wilson(k: usize, n: usize) -> (f64, f64) {
+    if n == 0 {
+        return (0.0, 1.0);
+    }
+    let (z, n, p) = (1.96f64, n as f64, k as f64 / n as f64);
+    let d = 1.0 + z * z / n;
+    let c = (p + z * z / (2.0 * n)) / d;
+    let h = z * (p * (1.0 - p) / n + z * z / (4.0 * n * n)).sqrt() / d;
+    ((c - h).max(0.0), (c + h).min(1.0))
+}
+
+/// DSR and PBO of the sma grid on one series, computed on the full sample as `run` does.
+pub fn gate_on_series(bars: &[Bar], costs: &Costs, blocks: usize) -> (f64, f64) {
+    let strat = SmaCross;
+    let mut configs = Vec::new();
+    for f in [10.0, 20.0, 50.0] {
+        for sl in [100.0, 200.0, 400.0] {
+            let mut p = Params::new();
+            p.insert("fast".into(), f);
+            p.insert("slow".into(), sl);
+            configs.push(p);
+        }
+    }
+    let warm = configs.iter().map(|c| strat.warmup(c)).max().unwrap_or(0);
+    let start = warm + 1;
+    let mut matrix = vec![vec![0.0; configs.len()]; bars.len() - start];
+    let mut srs = Vec::new();
+    let mut rets = Vec::new();
+    for (ci, c) in configs.iter().enumerate() {
+        let (r, _) = simulate(&strat, bars, c, costs, start, bars.len());
+        for (t, v) in r.iter().enumerate() {
+            matrix[t][ci] = *v;
+        }
+        srs.push(sharpe_per_bar(&r));
+        rets.push(r);
+    }
+    let best = (0..configs.len()).max_by(|&a, &b| srs[a].partial_cmp(&srs[b]).unwrap()).unwrap();
+    let dsr = deflated_sharpe(srs[best], &srs, &rets[best]);
+    let (pbo, _) = pbo_cscv(&matrix, configs.len(), blocks);
+    (dsr, pbo)
+}
+
+pub fn nullpass_count(series: usize, n_bars: usize, seed: u64, blocks: usize) -> (serde_json::Value, usize) {
+    let mut rng = rand_pcg::Pcg64::seed_from_u64(seed);
+    let costs = Costs { fee_bps: 10.0, slippage_bps: 5.0 };
+    let (mut pass, mut dsr_pass, mut pbo_pass) = (0usize, 0usize, 0usize);
+    let mut dsrs = Vec::new();
+    let mut pbos = Vec::new();
+    for _ in 0..series {
+        let b = synthetic_bars(&mut rng, n_bars);
+        let (dsr, pbo) = gate_on_series(&b, &costs, blocks);
+        let (d_ok, p_ok) = (dsr >= 0.95, pbo <= 0.5);
+        dsr_pass += d_ok as usize;
+        pbo_pass += p_ok as usize;
+        pass += (d_ok && p_ok) as usize;
+        dsrs.push(dsr);
+        pbos.push(pbo);
+    }
+    let (lo, hi) = wilson(pass, series);
+    let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len().max(1) as f64;
+    let v = serde_json::json!({
+        "null_pass_count": pass,
+        "null_pass_rate": pass as f64 / series.max(1) as f64,
+        "wilson95_low": lo, "wilson95_high": hi,
+        "dsr_only_pass_count": dsr_pass,
+        "pbo_only_pass_count": pbo_pass,
+        "mean_dsr": mean(&dsrs), "mean_pbo": mean(&pbos),
+    });
+    (v, pass)
+}
+
+fn nullpass(series: usize, bars: usize, seed: u64, out: &PathBuf) -> anyhow::Result<()> {
+    let t0 = std::time::Instant::now();
+    let started = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs();
+    let blocks = 8;
+    let (gates, _) = nullpass_count(series, bars, seed, blocks);
+    let doc = serde_json::json!({
+        "gates": gates,
+        "config": { "series": series, "bars": bars, "seed": seed, "cscv_blocks": blocks,
+                    "grid": "sma fast=10,20,50;slow=100,200,400", "fee_bps": 10.0, "slippage_bps": 5.0,
+                    "gate": "DSR >= 0.95 and PBO <= 0.5, full sample" },
+        "provenance": {
+            "started_at": utc_iso(started),
+            "seeds": [seed],
+            "command": format!("cargo run --locked --release -q -- nullpass --series {series} --bars {bars} --seed {seed} --out {}", out.display()),
+            "hardware": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
+            "wall_s": t0.elapsed().as_secs_f64().round(),
+            "data_sources": [{"url": "synthetic seeded random-walk series generated in-process", "license": "none (generated)"}],
+        },
+    });
+    std::fs::write(out, serde_json::to_string_pretty(&doc)? + "\n")?;
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
@@ -860,6 +967,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::Run { prereg, out } => run(prereg, out),
         Cmd::Report { dir, readme } => report(&dir, &readme),
         Cmd::Cleangrade { pairs, bars, seed, out } => cleangrade(pairs, bars, seed, &out),
+        Cmd::Nullpass { series, bars, seed, out } => nullpass(series, bars, seed, &out),
     }
 }
 
@@ -968,6 +1076,22 @@ mod tests {
         assert_eq!(r["truncation"]["clean_control_false_positive_rate"], 0.0);
         assert_eq!(r["always_flag"]["clean_control_false_positive_rate"], 1.0);
         assert_eq!(r["never_flag"]["flaw_recall"], 0.0);
+    }
+
+    #[test]
+    fn wilson_interval_brackets_the_rate() {
+        let (lo, hi) = wilson(5, 100);
+        assert!(lo < 0.05 && 0.05 < hi && lo > 0.0 && hi < 0.2);
+        assert_eq!(wilson(0, 0), (0.0, 1.0));
+    }
+
+    #[test]
+    fn nullpass_is_deterministic_and_bounded() {
+        let (a, ca) = nullpass_count(3, 1500, 7, 4);
+        let (b, cb) = nullpass_count(3, 1500, 7, 4);
+        assert_eq!(a, b);
+        assert_eq!(ca, cb);
+        assert!(ca <= 3);
     }
 
     #[test]
