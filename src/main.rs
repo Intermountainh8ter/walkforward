@@ -154,6 +154,20 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Plant the full look-ahead rule on a fraction of bars in zero-drift random walks and report
+    /// the combined gate pass count per fraction.
+    Leakfrac {
+        #[arg(long, default_value_t = 100)]
+        series: usize,
+        #[arg(long, default_value_t = 20000)]
+        bars: usize,
+        #[arg(long, default_value_t = 7)]
+        seed: u64,
+        #[arg(long, value_delimiter = ',', default_value = "0,0.02,0.05,0.1,0.25,1")]
+        fractions: Vec<f64>,
+        #[arg(long)]
+        out: PathBuf,
+    },
 }
 
 fn report(dir: &PathBuf, readme: &PathBuf) -> anyhow::Result<()> {
@@ -1220,6 +1234,82 @@ fn cleanpair(pairs: usize, bars: usize, seed: u64, out: &PathBuf) -> anyhow::Res
     Ok(())
 }
 
+/// Full look-ahead rule on bars where `mask[t]` is set, the causal sma rule elsewhere.
+pub struct MaskedLookahead {
+    pub mask: Vec<bool>,
+}
+impl Strategy for MaskedLookahead {
+    fn target(&self, bars: &[Bar], t: usize, p: &Params) -> f64 {
+        if self.mask.get(t).copied().unwrap_or(false) {
+            LookaheadGrid.target(bars, t, p)
+        } else {
+            SmaCross.target(bars, t, p)
+        }
+    }
+    fn warmup(&self, p: &Params) -> usize {
+        SmaCross.warmup(p)
+    }
+}
+
+/// Returns json array per leak fraction and the combined pass counts. Paths are identical across
+/// fractions and the per-bar draws are shared, so the leaked bar sets are nested as fraction grows.
+pub fn leakfrac_count(series: usize, n_bars: usize, seed: u64, blocks: usize, fractions: &[f64]) -> (serde_json::Value, Vec<usize>) {
+    use rand::Rng;
+    let costs = Costs { fee_bps: 10.0, slippage_bps: 5.0 };
+    let mut arr = Vec::new();
+    let mut counts = Vec::new();
+    for &f in fractions {
+        let mut rng = rand_pcg::Pcg64::seed_from_u64(seed);
+        let mut mrng = rand_pcg::Pcg64::seed_from_u64(seed ^ 0x6c65_616b);
+        let (mut pass, mut dsr_pass, mut pbo_pass) = (0usize, 0usize, 0usize);
+        let mut leaked = 0usize;
+        for _ in 0..series {
+            let b = synthetic_bars(&mut rng, n_bars);
+            let mask: Vec<bool> = (0..n_bars).map(|_| mrng.gen::<f64>() < f).collect();
+            leaked += mask.iter().filter(|&&m| m).count();
+            let (dsr, pbo) = gate_on_series_with(&MaskedLookahead { mask }, &b, &costs, blocks);
+            let (d_ok, p_ok) = (dsr >= 0.95, pbo <= 0.5);
+            dsr_pass += d_ok as usize;
+            pbo_pass += p_ok as usize;
+            pass += (d_ok && p_ok) as usize;
+        }
+        let (lo, hi) = wilson(pass, series);
+        arr.push(serde_json::json!({
+            "leak_fraction": f, "realised_leak_fraction": leaked as f64 / (series * n_bars).max(1) as f64,
+            "combined_pass_count": pass, "combined_pass_rate": pass as f64 / series.max(1) as f64,
+            "wilson95_low": lo, "wilson95_high": hi,
+            "dsr_only_pass_count": dsr_pass, "pbo_only_pass_count": pbo_pass,
+        }));
+        counts.push(pass);
+    }
+    (serde_json::Value::Array(arr), counts)
+}
+
+fn leakfrac(series: usize, bars: usize, seed: u64, fractions: &[f64], out: &PathBuf) -> anyhow::Result<()> {
+    let t0 = std::time::Instant::now();
+    let started = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs();
+    let blocks = 8;
+    let (arr, _) = leakfrac_count(series, bars, seed, blocks, fractions);
+    let fr: Vec<String> = fractions.iter().map(|f| f.to_string()).collect();
+    let doc = serde_json::json!({
+        "fractions": arr,
+        "config": { "series": series, "bars": bars, "seed": seed, "cscv_blocks": blocks,
+                    "grid": "fast=10,20,50;slow=100,200,400", "fee_bps": 10.0, "slippage_bps": 5.0,
+                    "leak_rule": "lookahead grid (horizon fast/10 bars, threshold slow/100 bps) on bars drawn with probability equal to the fraction, causal sma elsewhere",
+                    "gate": "DSR >= 0.95 and PBO <= 0.5, full sample" },
+        "provenance": {
+            "started_at": utc_iso(started),
+            "seeds": [seed],
+            "command": format!("cargo run --locked --release -q -- leakfrac --series {series} --bars {bars} --seed {seed} --fractions {} --out {}", fr.join(","), out.display()),
+            "hardware": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
+            "wall_s": t0.elapsed().as_secs_f64().round(),
+            "data_sources": [{"url": "synthetic seeded random-walk series generated in-process", "license": "none (generated)"}],
+        },
+    });
+    std::fs::write(out, serde_json::to_string_pretty(&doc)? + "\n")?;
+    Ok(())
+}
+
 const GRID_FASTS: [f64; 5] = [10.0, 20.0, 35.0, 50.0, 70.0];
 const GRID_SLOWS: [f64; 5] = [100.0, 150.0, 200.0, 300.0, 400.0];
 
@@ -1290,6 +1380,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::Leakpass { series, bars, seed, out } => leakpass(series, bars, seed, &out),
         Cmd::Cleanpair { pairs, bars, seed, out } => cleanpair(pairs, bars, seed, &out),
         Cmd::Gridsweep { series, bars, seed, out } => gridsweep(series, bars, seed, &out),
+        Cmd::Leakfrac { series, bars, seed, fractions, out } => leakfrac(series, bars, seed, &fractions, &out),
         Cmd::Powersweep { series, bars, seed, drifts_bps, out } => powersweep(series, bars, seed, &drifts_bps, &out),
     }
 }
@@ -1460,6 +1551,19 @@ mod tests {
         p.insert("fast".into(), 10.0);
         p.insert("slow".into(), 100.0);
         assert!(truncation_flags(&LookaheadGrid, &bs, &p, 1));
+    }
+
+    #[test]
+    fn leakfrac_is_deterministic_and_endpoints_match_arms() {
+        let (a, ca) = leakfrac_count(3, 1500, 7, 4, &[0.0, 0.1, 1.0]);
+        let (b, _) = leakfrac_count(3, 1500, 7, 4, &[0.0, 0.1, 1.0]);
+        assert_eq!(a, b);
+        let (_, (_, clean)) = cleanpair_count(3, 1500, 7, 4);
+        let (_, (flawed, _)) = cleanpair_count(3, 1500, 7, 4);
+        assert_eq!(ca[0], clean);
+        assert_eq!(ca[2], flawed);
+        assert_eq!(a[0]["realised_leak_fraction"], 0.0);
+        assert_eq!(a[2]["realised_leak_fraction"], 1.0);
     }
 
     #[test]

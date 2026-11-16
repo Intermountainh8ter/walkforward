@@ -1,0 +1,90 @@
+{
+  "config": {
+    "bars": 20000,
+    "cscv_blocks": 8,
+    "fee_bps": 10.0,
+    "gate": "DSR >= 0.95 and PBO <= 0.5, full sample",
+    "grid": "fast=10,20,50;slow=100,200,400",
+    "leak_rule": "lookahead grid (horizon fast/10 bars, threshold slow/100 bps) on bars drawn with probability equal to the fraction, causal sma elsewhere",
+    "seed": 7,
+    "series": 100,
+    "slippage_bps": 5.0
+  },
+  "fractions": [
+    {
+      "combined_pass_count": 0,
+      "combined_pass_rate": 0.0,
+      "dsr_only_pass_count": 0,
+      "leak_fraction": 0.0,
+      "pbo_only_pass_count": 47,
+      "realised_leak_fraction": 0.0,
+      "wilson95_high": 0.03699480747600191,
+      "wilson95_low": 0.0
+    },
+    {
+      "combined_pass_count": 1,
+      "combined_pass_rate": 0.01,
+      "dsr_only_pass_count": 1,
+      "leak_fraction": 0.02,
+      "pbo_only_pass_count": 65,
+      "realised_leak_fraction": 0.019843,
+      "wilson95_high": 0.0544875247609346,
+      "wilson95_low": 0.0017673865655472645
+    },
+    {
+      "combined_pass_count": 4,
+      "combined_pass_rate": 0.04,
+      "dsr_only_pass_count": 4,
+      "leak_fraction": 0.05,
+      "pbo_only_pass_count": 100,
+      "realised_leak_fraction": 0.049671,
+      "wilson95_high": 0.09837217232607373,
+      "wilson95_low": 0.015663050551848016
+    },
+    {
+      "combined_pass_count": 6,
+      "combined_pass_rate": 0.06,
+      "dsr_only_pass_count": 6,
+      "leak_fraction": 0.1,
+      "pbo_only_pass_count": 100,
+      "realised_leak_fraction": 0.0999895,
+      "wilson95_high": 0.12476968531222507,
+      "wilson95_low": 0.02778574526665662
+    },
+    {
+      "combined_pass_count": 94,
+      "combined_pass_rate": 0.94,
+      "dsr_only_pass_count": 94,
+      "leak_fraction": 0.25,
+      "pbo_only_pass_count": 100,
+      "realised_leak_fraction": 0.2499105,
+      "wilson95_high": 0.9722142547333433,
+      "wilson95_low": 0.8752303146877748
+    },
+    {
+      "combined_pass_count": 100,
+      "combined_pass_rate": 1.0,
+      "dsr_only_pass_count": 100,
+      "leak_fraction": 1.0,
+      "pbo_only_pass_count": 100,
+      "realised_leak_fraction": 1.0,
+      "wilson95_high": 0.9999999999999999,
+      "wilson95_low": 0.9630051925239981
+    }
+  ],
+  "provenance": {
+    "command": "cargo run --locked --release -q -- leakfrac --series 100 --bars 20000 --seed 7 --fractions 0,0.02,0.05,0.1,0.25,1 --out results/181-leakfrac.json",
+    "data_sources": [
+      {
+        "license": "none (generated)",
+        "url": "synthetic seeded random-walk series generated in-process"
+      }
+    ],
+    "hardware": "linux x86_64",
+    "seeds": [
+      7
+    ],
+    "started_at": "2026-11-16T12:07:52Z",
+    "wall_s": 59.0
+  }
+}

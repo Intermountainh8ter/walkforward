@@ -68,6 +68,21 @@ The pass count did not fall as drift rose. The series are synthetic i.i.d. rando
 
 The pre-registered hypothesis (leaky arm passes at least 50 of 100) was refuted. The leak here is a one-bar shift on a slow moving-average crossover, which barely changes the position, so it earns little; a stronger leak (such as the `cleangrade` flawed strategy) was not tested. The series are synthetic random walks.
 
+## Partial look-ahead gate test (`leakfrac`)
+
+`leakfrac` plants the full look-ahead rule from `cleanpair` on a seeded random fraction of bars (causal sma rule elsewhere) in 100 zero-drift random walks (20,000 bars each, seed 7, 15 bps per fill, 8 CSCV blocks). Results in `results/181-leakfrac.json`, run with `cargo run --locked --release -q -- leakfrac --series 100 --bars 20000 --seed 7 --fractions 0,0.02,0.05,0.1,0.25,1 --out results/181-leakfrac.json`.
+
+| leaked bars | combined pass count (of 100) | Wilson 95% interval |
+|---|---|---|
+| 0 | 0 | 0.0 to 0.037 |
+| 0.02 | 1 | 0.002 to 0.054 |
+| 0.05 | 4 | 0.016 to 0.098 |
+| 0.1 | 6 | 0.028 to 0.125 |
+| 0.25 | 94 | 0.875 to 0.972 |
+| 1 | 100 | 0.963 to 1.0 |
+
+The pre-registered hypothesis (at least 50 of 100 passes at a 0.1 leak fraction) was refuted: 6 of 100 passed. The pass count rises sharply between 0.1 and 0.25. The series are synthetic random walks and the leak is one hand-written rule.
+
 ## Grid-size null sweep (`gridsweep`)
 
 `gridsweep` reruns the zero-drift null (100 series of 20,000 bars each, seed 7, 15 bps per fill, 8 CSCV blocks) with sma grids of 4, 9, 16 and 25 configurations, the DSR trial count equal to the grid searched. Results in `results/166-gridsweep.json`, run with `cargo run --locked --release -q -- gridsweep --series 100 --bars 20000 --seed 7 --out results/166-gridsweep.json`.

@@ -59,3 +59,13 @@ Pre-registered metric: `/pairs/0/clean_false_positive_count` in `results/169-cle
 Expected: clean-control pass count at most 1 of 100 (range 0 to 1) while flawed-arm recall is at least 90 of 100.
 
 Falsifier: a flawed-arm combined pass count below 90 of 100, or a clean-control combined pass count above 1 of 100.
+
+## 2026-11-16T12:07:43Z leakfrac proposal:28f451aaba863e3dbc208a0b0dac1f0ff2826a012e5ea7eca413f503888b9b8c
+
+Hypothesis: on 100 seeded zero-drift random-walk series of 20,000 bars (seed 7, 15 bps per fill, 8 CSCV blocks, grid fast=10,20,50 slow=100,200,400), a look-ahead rule active on 10 percent of bars (chosen by a seeded per-bar draw, otherwise the causal sma rule) passes the combined gate (DSR >= 0.95 and PBO <= 0.5) on at least 50 of 100 series, while the 0 percent control passes on at most 1 of 100.
+
+Pre-registered metric: `/fractions/3/combined_pass_count` in `results/181-leakfrac.json`.
+
+Expected: combined pass count at the 10 percent leak fraction at least 50 of 100 (range 50 to 100).
+
+Falsifier: a combined pass count below 50 of 100 at the 10 percent leak fraction, or a zero-leak control pass count above 1 of 100.
