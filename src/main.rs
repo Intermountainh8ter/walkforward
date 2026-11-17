@@ -140,6 +140,18 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Run a CPCV-style accept rule (in-sample-best sma configuration per split, accept if the 5th
+    /// percentile of out-of-sample split Sharpes is above zero) on zero-drift i.i.d. and GARCH series.
+    Cpcvpass {
+        #[arg(long, default_value_t = 100)]
+        series: usize,
+        #[arg(long, default_value_t = 20000)]
+        bars: usize,
+        #[arg(long, default_value_t = 7)]
+        seed: u64,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Plant a per-bar drift in i.i.d. and GARCH(1,1) Student-t series and report gate acceptance per arm.
     Garchpower {
         #[arg(long, default_value_t = 100)]
@@ -1363,6 +1375,119 @@ fn garchpass(series: usize, bars: usize, seed: u64, out: &PathBuf) -> anyhow::Re
     Ok(())
 }
 
+/// Out-of-sample per-bar Sharpe of the in-sample-best configuration for every split that holds
+/// out `test_blocks` of `blocks` blocks. `embargo` bars are dropped at both ends of every block.
+pub fn cpcv_split_sharpes(m: &[Vec<f64>], n_configs: usize, blocks: usize, test_blocks: usize, embargo: usize) -> Vec<f64> {
+    let block = m.len() / blocks;
+    if block == 0 || 2 * embargo >= block || n_configs < 1 {
+        return Vec::new();
+    }
+    let ids: Vec<usize> = (0..blocks).collect();
+    combinations(&ids, test_blocks)
+        .iter()
+        .map(|test| {
+            let mut tr = vec![Vec::new(); n_configs];
+            let mut te = vec![Vec::new(); n_configs];
+            for b in 0..blocks {
+                let rows = &m[b * block + embargo..(b + 1) * block - embargo];
+                for c in 0..n_configs {
+                    let dst = if test.contains(&b) { &mut te[c] } else { &mut tr[c] };
+                    dst.extend(rows.iter().map(|r| r[c]));
+                }
+            }
+            let is_sr: Vec<f64> = tr.iter().map(|r| sharpe_per_bar(r)).collect();
+            let best = (0..n_configs).max_by(|&a, &b| is_sr[a].partial_cmp(&is_sr[b]).unwrap()).unwrap();
+            sharpe_per_bar(&te[best])
+        })
+        .collect()
+}
+
+/// Accept iff the 5th percentile (sorted index floor(0.05 * (n - 1))) of split Sharpes is above zero.
+pub fn cpcv_accept(split_sharpes: &[f64]) -> bool {
+    if split_sharpes.is_empty() {
+        return false;
+    }
+    let mut v = split_sharpes.to_vec();
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    v[((v.len() - 1) as f64 * 0.05) as usize] > 0.0
+}
+
+fn sma_grid_matrix(bars: &[Bar], costs: &Costs) -> Vec<Vec<f64>> {
+    let mut configs = Vec::new();
+    for f in [10.0, 20.0, 50.0] {
+        for sl in [100.0, 200.0, 400.0] {
+            let mut p = Params::new();
+            p.insert("fast".into(), f);
+            p.insert("slow".into(), sl);
+            configs.push(p);
+        }
+    }
+    let warm = configs.iter().map(|c| SmaCross.warmup(c)).max().unwrap_or(0);
+    let start = warm + 1;
+    let mut matrix = vec![vec![0.0; configs.len()]; bars.len() - start];
+    for (ci, c) in configs.iter().enumerate() {
+        let (r, _) = simulate(&SmaCross, bars, c, costs, start, bars.len());
+        for (t, v) in r.iter().enumerate() {
+            matrix[t][ci] = *v;
+        }
+    }
+    matrix
+}
+
+/// Returns json of arms [iid, garch] and their CPCV accept counts. Same seed in both arms.
+pub fn cpcvpass_count(series: usize, n_bars: usize, seed: u64, blocks: usize, test_blocks: usize, embargo: usize) -> (serde_json::Value, (usize, usize)) {
+    let costs = Costs { fee_bps: 10.0, slippage_bps: 5.0 };
+    let (mut arms, mut counts) = (Vec::new(), Vec::new());
+    for name in ["iid", "garch"] {
+        let mut rng = rand_pcg::Pcg64::seed_from_u64(seed);
+        let (mut pass, mut n_splits, mut med_sum) = (0usize, 0usize, 0.0);
+        for _ in 0..series {
+            let b = if name == "iid" { synthetic_bars(&mut rng, n_bars) } else { synthetic_bars_garch(&mut rng, n_bars) };
+            let m = sma_grid_matrix(&b, &costs);
+            let mut ss = cpcv_split_sharpes(&m, 9, blocks, test_blocks, embargo);
+            n_splits = ss.len();
+            pass += cpcv_accept(&ss) as usize;
+            ss.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            if !ss.is_empty() {
+                med_sum += ss[ss.len() / 2];
+            }
+        }
+        let (lo, hi) = wilson(pass, series);
+        let n = series.max(1) as f64;
+        arms.push(serde_json::json!({
+            "arm": name, "null_pass_count": pass, "null_pass_rate": pass as f64 / n,
+            "wilson95_low": lo, "wilson95_high": hi,
+            "splits_per_series": n_splits, "mean_median_split_sharpe_per_bar": med_sum / n,
+        }));
+        counts.push(pass);
+    }
+    (serde_json::Value::Array(arms), (counts[0], counts[1]))
+}
+
+fn cpcvpass(series: usize, bars: usize, seed: u64, out: &PathBuf) -> anyhow::Result<()> {
+    let t0 = std::time::Instant::now();
+    let started = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs();
+    let (blocks, test_blocks, embargo) = (8, 2, 24);
+    let (arms, _) = cpcvpass_count(series, bars, seed, blocks, test_blocks, embargo);
+    let doc = serde_json::json!({
+        "arms": arms,
+        "config": { "series": series, "bars": bars, "seed": seed, "blocks": blocks, "test_blocks": test_blocks, "embargo_bars": embargo,
+                    "grid": "sma fast=10,20,50;slow=100,200,400", "fee_bps": 10.0, "slippage_bps": 5.0,
+                    "garch": "zero drift, alpha 0.10, beta 0.85, Student-t df 5 unit variance, unconditional bar vol 0.02/sqrt(12)",
+                    "accept_rule": "5th percentile (sorted index floor(0.05*(n-1))) of out-of-sample split Sharpes of the in-sample-best configuration > 0; embargo bars dropped at both ends of every block" },
+        "provenance": {
+            "started_at": utc_iso(started),
+            "seeds": [seed],
+            "command": format!("cargo run --locked --release -q -- cpcvpass --series {series} --bars {bars} --seed {seed} --out {}", out.display()),
+            "hardware": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
+            "wall_s": t0.elapsed().as_secs_f64().round(),
+            "data_sources": [{"url": "synthetic seeded GARCH(1,1) Student-t and i.i.d. series generated in-process", "license": "none (generated)"}],
+        },
+    });
+    std::fs::write(out, serde_json::to_string_pretty(&doc)? + "\n")?;
+    Ok(())
+}
+
 /// Strong full-lookahead grid: long when the close `fast/10` bars ahead beats this close by `slow/100` bps.
 pub struct LookaheadGrid;
 impl Strategy for LookaheadGrid {
@@ -1744,6 +1869,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::Cleangrade { pairs, bars, seed, out } => cleangrade(pairs, bars, seed, &out),
         Cmd::Nullpass { series, bars, seed, out } => nullpass(series, bars, seed, &out),
         Cmd::Leakpass { series, bars, seed, out } => leakpass(series, bars, seed, &out),
+        Cmd::Cpcvpass { series, bars, seed, out } => cpcvpass(series, bars, seed, &out),
         Cmd::Garchpass { series, bars, seed, out } => garchpass(series, bars, seed, &out),
         Cmd::Garchpower { series, bars, seed, drift_bps, out } => garchpower(series, bars, seed, drift_bps, &out),
         Cmd::Cleanpair { pairs, bars, seed, out } => cleanpair(pairs, bars, seed, &out),
@@ -1931,6 +2057,18 @@ mod tests {
         assert_eq!(c.0, counts[0]);
         assert_eq!(a[1]["arm"], "garch");
         assert!(a[1]["acceptance_rate"].as_f64().unwrap() <= 1.0);
+    }
+
+    #[test]
+    fn cpcvpass_is_deterministic_and_has_28_splits() {
+        let (a, _) = cpcvpass_count(2, 3000, 7, 8, 2, 24);
+        let (b, _) = cpcvpass_count(2, 3000, 7, 8, 2, 24);
+        assert_eq!(a, b);
+        assert_eq!(a[0]["splits_per_series"], 28);
+        assert_eq!(a[1]["arm"], "garch");
+        assert!(cpcv_accept(&[1.0; 28]));
+        assert!(!cpcv_accept(&[-1.0; 28]));
+        assert!(!cpcv_accept(&[]));
     }
 
     #[test]

@@ -177,3 +177,14 @@ The pre-registered hypothesis (GARCH arm passes at most 5 of 100) held. The GARC
 | GARCH | 76 | 0.668 to 0.833 |
 
 The pre-registered range for the GARCH arm (0.60 to 0.95) held. The i.i.d. arm equals the 4 bps row of the power sweep. The series are synthetic.
+
+## CPCV accept rule on null series (`cpcvpass`)
+
+`cpcvpass` splits each zero-drift series (20,000 bars, seed 7, sma grid, 15 bps per fill) into 8 blocks and holds out 2, giving 28 splits, with 24 bars dropped at both ends of every block. For each split the in-sample-best configuration is scored on the held-out blocks. A series is accepted if the 5th percentile of the 28 out-of-sample Sharpes is above zero. 100 series per arm. Results in `results/204-cpcvpass.json`, run with `cargo run --locked --release -q -- cpcvpass --series 100 --bars 20000 --seed 7 --out results/204-cpcvpass.json`.
+
+| arm | accept count (of 100) | Wilson 95% interval |
+|---|---|---|
+| i.i.d. | 1 | 0.002 to 0.054 |
+| GARCH(1,1) Student-t | 0 | 0.0 to 0.037 |
+
+The pre-registered hypothesis (GARCH-arm accept count at most 10 of 100) was not refuted. Only null series were run, so this says nothing about power. The series are synthetic.

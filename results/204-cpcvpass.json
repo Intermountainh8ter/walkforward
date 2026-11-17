@@ -1,0 +1,50 @@
+{
+  "arms": [
+    {
+      "arm": "iid",
+      "mean_median_split_sharpe_per_bar": -0.0041927257628142246,
+      "null_pass_count": 1,
+      "null_pass_rate": 0.01,
+      "splits_per_series": 28,
+      "wilson95_high": 0.0544875247609346,
+      "wilson95_low": 0.0017673865655472645
+    },
+    {
+      "arm": "garch",
+      "mean_median_split_sharpe_per_bar": -0.002611938847483637,
+      "null_pass_count": 0,
+      "null_pass_rate": 0.0,
+      "splits_per_series": 28,
+      "wilson95_high": 0.03699480747600191,
+      "wilson95_low": 0.0
+    }
+  ],
+  "config": {
+    "accept_rule": "5th percentile (sorted index floor(0.05*(n-1))) of out-of-sample split Sharpes of the in-sample-best configuration > 0; embargo bars dropped at both ends of every block",
+    "bars": 20000,
+    "blocks": 8,
+    "embargo_bars": 24,
+    "fee_bps": 10.0,
+    "garch": "zero drift, alpha 0.10, beta 0.85, Student-t df 5 unit variance, unconditional bar vol 0.02/sqrt(12)",
+    "grid": "sma fast=10,20,50;slow=100,200,400",
+    "seed": 7,
+    "series": 100,
+    "slippage_bps": 5.0,
+    "test_blocks": 2
+  },
+  "provenance": {
+    "command": "cargo run --locked --release -q -- cpcvpass --series 100 --bars 20000 --seed 7 --out results/204-cpcvpass.json",
+    "data_sources": [
+      {
+        "license": "none (generated)",
+        "url": "synthetic seeded GARCH(1,1) Student-t and i.i.d. series generated in-process"
+      }
+    ],
+    "hardware": "linux x86_64",
+    "seeds": [
+      7
+    ],
+    "started_at": "2026-11-17T13:30:55Z",
+    "wall_s": 15.0
+  }
+}
