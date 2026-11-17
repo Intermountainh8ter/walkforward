@@ -140,6 +140,19 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Plant a per-bar drift in i.i.d. and GARCH(1,1) Student-t series and report gate acceptance per arm.
+    Garchpower {
+        #[arg(long, default_value_t = 100)]
+        series: usize,
+        #[arg(long, default_value_t = 20000)]
+        bars: usize,
+        #[arg(long, default_value_t = 7)]
+        seed: u64,
+        #[arg(long)]
+        drift_bps: f64,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Rerun the zero-drift sma null with 4, 9, 16 and 25 configurations and count combined passes.
     Gridsweep {
         #[arg(long, default_value_t = 100)]
@@ -1219,6 +1232,11 @@ fn std_normal(rng: &mut rand_pcg::Pcg64) -> f64 {
 /// Zero-drift GARCH(1,1) with unit-variance Student-t(5) innovations. Unconditional per-bar
 /// volatility matches the uniform +-1% i.i.d. walk (0.02 / sqrt(12)); alpha 0.1, beta 0.85.
 fn synthetic_bars_garch(rng: &mut rand_pcg::Pcg64, n: usize) -> Vec<Bar> {
+    synthetic_bars_garch_drift(rng, n, 0.0)
+}
+
+/// Same GARCH process with a fixed per-bar return `drift` (a fraction) added after the shock.
+fn synthetic_bars_garch_drift(rng: &mut rand_pcg::Pcg64, n: usize, drift: f64) -> Vec<Bar> {
     let (alpha, beta, df) = (0.10f64, 0.85f64, 5usize);
     let var0 = (0.02f64 * 0.02) / 12.0;
     let omega = var0 * (1.0 - alpha - beta);
@@ -1231,11 +1249,62 @@ fn synthetic_bars_garch(rng: &mut rand_pcg::Pcg64, n: usize) -> Vec<Bar> {
             let r = (var.sqrt() * t).max(-0.5);
             var = omega + alpha * r * r + beta * var;
             let open = px;
-            px *= 1.0 + r;
+            px *= 1.0 + r + drift;
             let (hi, lo) = (open.max(px) * 1.001, open.min(px) * 0.999);
             Bar { ts_ms: i as i64 * 3_600_000, open, high: hi, low: lo, close: px, volume: 1.0 }
         })
         .collect()
+}
+
+/// Returns json of arms [iid, garch] with the combined acceptance rate at a planted drift (bps per bar).
+pub fn garchpower_count(series: usize, n_bars: usize, seed: u64, blocks: usize, drift_bps: f64) -> (serde_json::Value, (usize, usize)) {
+    let costs = Costs { fee_bps: 10.0, slippage_bps: 5.0 };
+    let drift = drift_bps / 10_000.0;
+    let (mut arms, mut counts) = (Vec::new(), Vec::new());
+    for name in ["iid", "garch"] {
+        let mut rng = rand_pcg::Pcg64::seed_from_u64(seed);
+        let (mut pass, mut dsr_pass, mut pbo_pass) = (0usize, 0usize, 0usize);
+        for _ in 0..series {
+            let b = if name == "iid" { synthetic_bars_drift(&mut rng, n_bars, drift) } else { synthetic_bars_garch_drift(&mut rng, n_bars, drift) };
+            let (dsr, pbo) = gate_on_series(&b, &costs, blocks);
+            let (d_ok, p_ok) = (dsr >= 0.95, pbo <= 0.5);
+            dsr_pass += d_ok as usize;
+            pbo_pass += p_ok as usize;
+            pass += (d_ok && p_ok) as usize;
+        }
+        let (lo, hi) = wilson(pass, series);
+        arms.push(serde_json::json!({
+            "arm": name, "accepted_count": pass, "acceptance_rate": pass as f64 / series.max(1) as f64,
+            "wilson95_low": lo, "wilson95_high": hi,
+            "dsr_only_pass_count": dsr_pass, "pbo_only_pass_count": pbo_pass,
+        }));
+        counts.push(pass);
+    }
+    (serde_json::Value::Array(arms), (counts[0], counts[1]))
+}
+
+fn garchpower(series: usize, bars: usize, seed: u64, drift_bps: f64, out: &PathBuf) -> anyhow::Result<()> {
+    let t0 = std::time::Instant::now();
+    let started = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs();
+    let blocks = 8;
+    let (arms, _) = garchpower_count(series, bars, seed, blocks, drift_bps);
+    let doc = serde_json::json!({
+        "arms": arms,
+        "config": { "series": series, "bars": bars, "seed": seed, "cscv_blocks": blocks, "drift_bps_per_bar": drift_bps,
+                    "grid": "sma fast=10,20,50;slow=100,200,400", "fee_bps": 10.0, "slippage_bps": 5.0,
+                    "garch": "alpha 0.10, beta 0.85, Student-t df 5 unit variance, unconditional bar vol 0.02/sqrt(12)",
+                    "gate": "DSR >= 0.95 and PBO <= 0.5, full sample" },
+        "provenance": {
+            "started_at": utc_iso(started),
+            "seeds": [seed],
+            "command": format!("cargo run --locked --release -q -- garchpower --series {series} --bars {bars} --seed {seed} --drift-bps {drift_bps} --out {}", out.display()),
+            "hardware": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
+            "wall_s": t0.elapsed().as_secs_f64().round(),
+            "data_sources": [{"url": "synthetic seeded GARCH(1,1) Student-t and i.i.d. series generated in-process", "license": "none (generated)"}],
+        },
+    });
+    std::fs::write(out, serde_json::to_string_pretty(&doc)? + "\n")?;
+    Ok(())
 }
 
 /// Returns json of arms [iid, garch] and their combined pass counts. Same seed in both arms.
@@ -1676,6 +1745,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::Nullpass { series, bars, seed, out } => nullpass(series, bars, seed, &out),
         Cmd::Leakpass { series, bars, seed, out } => leakpass(series, bars, seed, &out),
         Cmd::Garchpass { series, bars, seed, out } => garchpass(series, bars, seed, &out),
+        Cmd::Garchpower { series, bars, seed, drift_bps, out } => garchpower(series, bars, seed, drift_bps, &out),
         Cmd::Cleanpair { pairs, bars, seed, out } => cleanpair(pairs, bars, seed, &out),
         Cmd::Gridsweep { series, bars, seed, out } => gridsweep(series, bars, seed, &out),
         Cmd::Leakfrac { series, bars, seed, fractions, out } => leakfrac(series, bars, seed, &fractions, &out),
@@ -1850,6 +1920,17 @@ mod tests {
         let mut rng = rand_pcg::Pcg64::seed_from_u64(7);
         let bs = synthetic_bars_garch(&mut rng, 500);
         assert!(bs.iter().all(|x| x.close.is_finite() && x.close > 0.0));
+    }
+
+    #[test]
+    fn garchpower_is_deterministic_and_iid_arm_matches_powersweep() {
+        let (a, c) = garchpower_count(3, 1500, 7, 4, 4.0);
+        let (b, _) = garchpower_count(3, 1500, 7, 4, 4.0);
+        assert_eq!(a, b);
+        let (_, counts) = powersweep_count(3, 1500, 7, 4, &[4.0]);
+        assert_eq!(c.0, counts[0]);
+        assert_eq!(a[1]["arm"], "garch");
+        assert!(a[1]["acceptance_rate"].as_f64().unwrap() <= 1.0);
     }
 
     #[test]

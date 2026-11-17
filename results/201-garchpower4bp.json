@@ -1,0 +1,49 @@
+{
+  "arms": [
+    {
+      "acceptance_rate": 0.82,
+      "accepted_count": 82,
+      "arm": "iid",
+      "dsr_only_pass_count": 100,
+      "pbo_only_pass_count": 82,
+      "wilson95_high": 0.8829986834574896,
+      "wilson95_low": 0.7333246397578691
+    },
+    {
+      "acceptance_rate": 0.76,
+      "accepted_count": 76,
+      "arm": "garch",
+      "dsr_only_pass_count": 100,
+      "pbo_only_pass_count": 76,
+      "wilson95_high": 0.8330878873454004,
+      "wilson95_low": 0.6676748127670786
+    }
+  ],
+  "config": {
+    "bars": 20000,
+    "cscv_blocks": 8,
+    "drift_bps_per_bar": 4.0,
+    "fee_bps": 10.0,
+    "garch": "alpha 0.10, beta 0.85, Student-t df 5 unit variance, unconditional bar vol 0.02/sqrt(12)",
+    "gate": "DSR >= 0.95 and PBO <= 0.5, full sample",
+    "grid": "sma fast=10,20,50;slow=100,200,400",
+    "seed": 7,
+    "series": 100,
+    "slippage_bps": 5.0
+  },
+  "provenance": {
+    "command": "cargo run --locked --release -q -- garchpower --series 100 --bars 20000 --seed 7 --drift-bps 4 --out results/201-garchpower4bp.json",
+    "data_sources": [
+      {
+        "license": "none (generated)",
+        "url": "synthetic seeded GARCH(1,1) Student-t and i.i.d. series generated in-process"
+      }
+    ],
+    "hardware": "linux x86_64",
+    "seeds": [
+      7
+    ],
+    "started_at": "2026-11-17T13:15:46Z",
+    "wall_s": 22.0
+  }
+}

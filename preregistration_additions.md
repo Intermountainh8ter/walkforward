@@ -99,3 +99,13 @@ Pre-registered metric: `/arms/1/null_pass_count` in `results/198-garchpass.json`
 Expected: GARCH arm null pass count at most 5 of 100 (range 0 to 5).
 
 Falsifier: a GARCH-arm combined-gate pass count above 5 of 100.
+
+## 2026-11-17T13:15:38Z garchpower proposal:21627f58c651edb0cc5508dfee148c65abec3790f2a9d0360014c41679bfa261
+
+Hypothesis: on 100 seeded series of 20,000 bars (seed 7, sma grid fast=10,20,50 slow=100,200,400, 15 bps per fill, 8 CSCV blocks) with a planted drift of 4 bps per bar, the combined gate (DSR >= 0.95 and PBO <= 0.5) accepts between 60 and 95 percent of GARCH(1,1) Student-t series, so volatility clustering does not collapse acceptance relative to the 0.82 i.i.d. rate in results/163-powersweep.json. Arm 0 is i.i.d., arm 1 is GARCH, same seed.
+
+Pre-registered metric: `/arms/1/acceptance_rate` in `results/201-garchpower4bp.json`.
+
+Expected: GARCH-arm acceptance rate at 4 bps lies between 0.60 and 0.95.
+
+Falsifier: a GARCH-arm acceptance rate below 0.60 or above 0.95 in the run.

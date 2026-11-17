@@ -166,3 +166,14 @@ The pre-registered hypothesis (Reality Check passes at most 10 of 100) was suppo
 | GARCH | 0 | 0.0 to 0.037 |
 
 The pre-registered hypothesis (GARCH arm passes at most 5 of 100) held. The GARCH parameters are one fixed choice, and the series are synthetic; the result says nothing about real crypto bars.
+
+## Gate acceptance with planted drift, i.i.d. and GARCH (`garchpower`)
+
+`garchpower` plants a fixed per-bar drift of 4 bps in 100 seeded series of 20,000 bars (seed 7, sma grid, 15 bps per fill, 8 CSCV blocks) in two arms on the same seed: i.i.d. and GARCH(1,1) Student-t. It counts how often the combined gate (DSR >= 0.95 and PBO <= 0.5) accepts. Results in `results/201-garchpower4bp.json`, run with `cargo run --locked --release -q -- garchpower --series 100 --bars 20000 --seed 7 --drift-bps 4 --out results/201-garchpower4bp.json`.
+
+| arm | accepted (of 100) | Wilson 95% interval |
+|---|---|---|
+| i.i.d. | 82 | 0.733 to 0.883 |
+| GARCH | 76 | 0.668 to 0.833 |
+
+The pre-registered range for the GARCH arm (0.60 to 0.95) held. The i.i.d. arm equals the 4 bps row of the power sweep. The series are synthetic.
