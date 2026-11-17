@@ -1,0 +1,49 @@
+{
+  "arms": [
+    {
+      "acceptance_rate": 0.67,
+      "accepted_count": 67,
+      "arm": "iid",
+      "splits_per_series": 28,
+      "wilson95_high": 0.7543701620610456,
+      "wilson95_low": 0.5730516033971139
+    },
+    {
+      "acceptance_rate": 0.66,
+      "accepted_count": 66,
+      "arm": "garch",
+      "splits_per_series": 28,
+      "wilson95_high": 0.74538620502457,
+      "wilson95_low": 0.5627754565831095
+    }
+  ],
+  "config": {
+    "accept_rule": "5th percentile (sorted index floor(0.05*(n-1))) of out-of-sample split Sharpes of the in-sample-best configuration > 0; embargo bars dropped at both ends of every block",
+    "bars": 20000,
+    "blocks": 8,
+    "drift_bps_per_bar": 2.0,
+    "embargo_bars": 24,
+    "fee_bps": 10.0,
+    "garch": "alpha 0.10, beta 0.85, Student-t df 5 unit variance, unconditional bar vol 0.02/sqrt(12)",
+    "grid": "sma fast=10,20,50;slow=100,200,400",
+    "seed": 7,
+    "series": 100,
+    "slippage_bps": 5.0,
+    "test_blocks": 2
+  },
+  "provenance": {
+    "command": "cargo run --locked --release -q -- cpcvpower --series 100 --bars 20000 --seed 7 --drift-bps 2 --out results/205-cpcvpower.json",
+    "data_sources": [
+      {
+        "license": "none (generated)",
+        "url": "synthetic seeded i.i.d. and GARCH(1,1) Student-t series generated in-process"
+      }
+    ],
+    "hardware": "linux x86_64",
+    "seeds": [
+      7
+    ],
+    "started_at": "2026-11-17T13:35:33Z",
+    "wall_s": 16.0
+  }
+}

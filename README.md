@@ -188,3 +188,14 @@ The pre-registered range for the GARCH arm (0.60 to 0.95) held. The i.i.d. arm e
 | GARCH(1,1) Student-t | 0 | 0.0 to 0.037 |
 
 The pre-registered hypothesis (GARCH-arm accept count at most 10 of 100) was not refuted. Only null series were run, so this says nothing about power. The series are synthetic.
+
+## CPCV accept rule with planted drift (`cpcvpower`)
+
+`cpcvpower` plants a fixed per-bar drift of 2 bps in 100 seeded series of 20,000 bars (seed 7, sma grid, 15 bps per fill) in two arms, i.i.d. and GARCH(1,1) Student-t, and counts how often the CPCV accept rule from `cpcvpass` accepts (8 blocks, 2 test blocks, 28 splits, embargo 24 bars). Results in `results/205-cpcvpower.json`, run with `cargo run --locked --release -q -- cpcvpower --series 100 --bars 20000 --seed 7 --drift-bps 2 --out results/205-cpcvpower.json`.
+
+| arm | accepted (of 100) | acceptance rate | Wilson 95% interval |
+|---|---|---|---|
+| i.i.d. | 67 | 0.67 | 0.573 to 0.754 |
+| GARCH | 66 | 0.66 | 0.563 to 0.745 |
+
+The pre-registered range for the GARCH arm (0.30 to 0.90) held. The series are synthetic with a constant drift; the result says nothing about real bars.

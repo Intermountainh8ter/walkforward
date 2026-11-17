@@ -119,3 +119,13 @@ Pre-registered metric: `/arms/1/null_pass_count` in `results/204-cpcvpass.json`.
 Expected: GARCH-arm CPCV accept count at most 10 of 100 (range 0 to 10).
 
 Falsifier: a GARCH-arm CPCV accept count above 10 of 100.
+
+## 2026-11-17T13:35:24Z cpcvpower proposal:fd82758df270d7a628ea1550deb5aed35b99d9118056be329812f6a6b49dcd3c
+
+Hypothesis: with a planted drift of 2 bps per bar on 100 seeded series of 20,000 bars (seed 7, sma grid fast=10,20,50 slow=100,200,400, 15 bps per fill, 8 blocks, 2 test blocks, 28 splits, embargo 24 bars), the CPCV accept rule (5th percentile of out-of-sample split Sharpes of the in-sample-best configuration above zero) accepts between 30 and 90 percent of GARCH(1,1) Student-t series. Arm 0 is i.i.d., arm 1 is GARCH, same seed.
+
+Pre-registered metric: `/arms/1/acceptance_rate` in `results/205-cpcvpower.json`.
+
+Expected: GARCH-arm CPCV acceptance rate at 2 bps lies between 0.30 and 0.90.
+
+Falsifier: a GARCH-arm acceptance rate below 0.30 or above 0.90 in the run.
