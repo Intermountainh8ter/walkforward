@@ -199,3 +199,15 @@ The pre-registered hypothesis (GARCH-arm accept count at most 10 of 100) was not
 | GARCH | 66 | 0.66 | 0.563 to 0.745 |
 
 The pre-registered range for the GARCH arm (0.30 to 0.90) held. The series are synthetic with a constant drift; the result says nothing about real bars.
+
+## CPCV embargo width (`cpcvembargo`)
+
+`cpcvembargo` reruns the CPCV accept rule from `cpcvpass` on 100 seeded GARCH(1,1) Student-t series (20,000 bars each, seed 7, planted drift 2 bps per bar, 15 bps per fill, 8 blocks, 2 test blocks, 28 splits) at three embargo widths on the same series. Results in `results/206-cpcvembargo.json`, run with `cargo run --locked --release -q -- cpcvembargo --series 100 --bars 20000 --seed 7 --drift-bps 2 --embargos 0,168,480 --out results/206-cpcvembargo.json`.
+
+| embargo | accepted (of 100) | acceptance rate |
+|---|---|---|
+| 0 bars | 74 | 0.74 |
+| 168 bars | 61 | 0.61 |
+| 480 bars | 46 | 0.46 |
+
+The pre-registered hypothesis (acceptance at 168 bars between 0.45 and 0.80) held. Acceptance fell as the embargo widened. The series are synthetic with a constant drift.

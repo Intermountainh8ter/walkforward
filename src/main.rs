@@ -165,6 +165,21 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Plant a per-bar drift in GARCH(1,1) Student-t series and report CPCV acceptance per embargo width (one arm each).
+    Cpcvembargo {
+        #[arg(long, default_value_t = 100)]
+        series: usize,
+        #[arg(long, default_value_t = 20000)]
+        bars: usize,
+        #[arg(long, default_value_t = 7)]
+        seed: u64,
+        #[arg(long)]
+        drift_bps: f64,
+        #[arg(long, value_delimiter = ',')]
+        embargos: Vec<usize>,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Plant a per-bar drift in i.i.d. and GARCH(1,1) Student-t series and report gate acceptance per arm.
     Garchpower {
         #[arg(long, default_value_t = 100)]
@@ -1550,6 +1565,58 @@ fn cpcvpower(series: usize, bars: usize, seed: u64, drift_bps: f64, out: &PathBu
     Ok(())
 }
 
+/// Returns json of one arm per embargo width: CPCV acceptance rate on the same seeded GARCH series with a planted drift.
+pub fn cpcvembargo_count(series: usize, n_bars: usize, seed: u64, blocks: usize, test_blocks: usize, embargos: &[usize], drift_bps: f64) -> serde_json::Value {
+    let costs = Costs { fee_bps: 10.0, slippage_bps: 5.0 };
+    let drift = drift_bps / 10_000.0;
+    let mut rng = rand_pcg::Pcg64::seed_from_u64(seed);
+    let mut pass = vec![0usize; embargos.len()];
+    let mut n_splits = vec![0usize; embargos.len()];
+    for _ in 0..series {
+        let b = synthetic_bars_garch_drift(&mut rng, n_bars, drift);
+        let m = sma_grid_matrix(&b, &costs);
+        for (i, &e) in embargos.iter().enumerate() {
+            let ss = cpcv_split_sharpes(&m, 9, blocks, test_blocks, e);
+            n_splits[i] = ss.len();
+            pass[i] += cpcv_accept(&ss) as usize;
+        }
+    }
+    let arms: Vec<_> = embargos.iter().enumerate().map(|(i, &e)| {
+        let (lo, hi) = wilson(pass[i], series);
+        serde_json::json!({
+            "arm": format!("garch_embargo_{e}"), "embargo_bars": e, "accepted_count": pass[i],
+            "acceptance_rate": pass[i] as f64 / series.max(1) as f64,
+            "wilson95_low": lo, "wilson95_high": hi, "splits_per_series": n_splits[i],
+        })
+    }).collect();
+    serde_json::Value::Array(arms)
+}
+
+fn cpcvembargo(series: usize, bars: usize, seed: u64, drift_bps: f64, embargos: &[usize], out: &PathBuf) -> anyhow::Result<()> {
+    let t0 = std::time::Instant::now();
+    let started = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs();
+    let (blocks, test_blocks) = (8, 2);
+    let arms = cpcvembargo_count(series, bars, seed, blocks, test_blocks, embargos, drift_bps);
+    let list = embargos.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(",");
+    let doc = serde_json::json!({
+        "arms": arms,
+        "config": { "series": series, "bars": bars, "seed": seed, "blocks": blocks, "test_blocks": test_blocks, "embargos": embargos, "drift_bps_per_bar": drift_bps,
+                    "grid": "sma fast=10,20,50;slow=100,200,400", "fee_bps": 10.0, "slippage_bps": 5.0,
+                    "garch": "alpha 0.10, beta 0.85, Student-t df 5 unit variance, unconditional bar vol 0.02/sqrt(12)",
+                    "accept_rule": "5th percentile (sorted index floor(0.05*(n-1))) of out-of-sample split Sharpes of the in-sample-best configuration > 0; embargo bars dropped at both ends of every block" },
+        "provenance": {
+            "started_at": utc_iso(started),
+            "seeds": [seed],
+            "command": format!("cargo run --locked --release -q -- cpcvembargo --series {series} --bars {bars} --seed {seed} --drift-bps {drift_bps} --embargos {list} --out {}", out.display()),
+            "hardware": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
+            "wall_s": t0.elapsed().as_secs_f64().round(),
+            "data_sources": [{"url": "synthetic seeded GARCH(1,1) Student-t series generated in-process", "license": "none (generated)"}],
+        },
+    });
+    std::fs::write(out, serde_json::to_string_pretty(&doc)? + "\n")?;
+    Ok(())
+}
+
 /// Strong full-lookahead grid: long when the close `fast/10` bars ahead beats this close by `slow/100` bps.
 pub struct LookaheadGrid;
 impl Strategy for LookaheadGrid {
@@ -1933,6 +2000,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::Leakpass { series, bars, seed, out } => leakpass(series, bars, seed, &out),
         Cmd::Cpcvpass { series, bars, seed, out } => cpcvpass(series, bars, seed, &out),
         Cmd::Garchpass { series, bars, seed, out } => garchpass(series, bars, seed, &out),
+        Cmd::Cpcvembargo { series, bars, seed, drift_bps, embargos, out } => cpcvembargo(series, bars, seed, drift_bps, &embargos, &out),
         Cmd::Cpcvpower { series, bars, seed, drift_bps, out } => cpcvpower(series, bars, seed, drift_bps, &out),
         Cmd::Garchpower { series, bars, seed, drift_bps, out } => garchpower(series, bars, seed, drift_bps, &out),
         Cmd::Cleanpair { pairs, bars, seed, out } => cleanpair(pairs, bars, seed, &out),
@@ -2120,6 +2188,16 @@ mod tests {
         assert_eq!(c.0, counts[0]);
         assert_eq!(a[1]["arm"], "garch");
         assert!(a[1]["acceptance_rate"].as_f64().unwrap() <= 1.0);
+    }
+
+    #[test]
+    fn cpcvembargo_is_deterministic_with_one_arm_per_width() {
+        let a = cpcvembargo_count(2, 3000, 7, 8, 2, &[0, 24, 48], 2.0);
+        let b = cpcvembargo_count(2, 3000, 7, 8, 2, &[0, 24, 48], 2.0);
+        assert_eq!(a, b);
+        assert_eq!(a.as_array().unwrap().len(), 3);
+        assert_eq!(a[1]["embargo_bars"], 24);
+        assert_eq!(a[1]["splits_per_series"], 28);
     }
 
     #[test]

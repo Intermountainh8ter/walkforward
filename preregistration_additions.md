@@ -129,3 +129,13 @@ Pre-registered metric: `/arms/1/acceptance_rate` in `results/205-cpcvpower.json`
 Expected: GARCH-arm CPCV acceptance rate at 2 bps lies between 0.30 and 0.90.
 
 Falsifier: a GARCH-arm acceptance rate below 0.30 or above 0.90 in the run.
+
+## 2026-11-17T13:39:50Z cpcvembargo proposal:9a01a60408fe9074cc7e187f81c06c8414b3a2b80aa9f152d806643e8e8938fd
+
+Hypothesis: on 100 seeded GARCH(1,1) Student-t series of 20,000 bars with a planted drift of 2 bps per bar (seed 7, sma grid fast=10,20,50 slow=100,200,400, 15 bps per fill, 8 blocks, 2 test blocks, 28 splits), the CPCV accept rule at an embargo of 168 bars accepts between 0.45 and 0.80 of series. Arms are ordered by embargo: 0, 168, 480 bars.
+
+Pre-registered metric: `/arms/1/acceptance_rate` in `results/206-cpcvembargo.json`.
+
+Expected: acceptance rate at embargo 168 bars lies between 0.45 and 0.80.
+
+Falsifier: an acceptance rate at embargo 168 bars below 0.45 or above 0.80.

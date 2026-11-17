@@ -1,0 +1,64 @@
+{
+  "arms": [
+    {
+      "acceptance_rate": 0.74,
+      "accepted_count": 74,
+      "arm": "garch_embargo_0",
+      "embargo_bars": 0,
+      "splits_per_series": 28,
+      "wilson95_high": 0.8159542187301354,
+      "wilson95_low": 0.6462882736813838
+    },
+    {
+      "acceptance_rate": 0.61,
+      "accepted_count": 61,
+      "arm": "garch_embargo_168",
+      "embargo_bars": 168,
+      "splits_per_series": 28,
+      "wilson95_high": 0.699832780680298,
+      "wilson95_low": 0.5120283616749817
+    },
+    {
+      "acceptance_rate": 0.46,
+      "accepted_count": 46,
+      "arm": "garch_embargo_480",
+      "embargo_bars": 480,
+      "splits_per_series": 28,
+      "wilson95_high": 0.5573531460647615,
+      "wilson95_low": 0.36560643853331865
+    }
+  ],
+  "config": {
+    "accept_rule": "5th percentile (sorted index floor(0.05*(n-1))) of out-of-sample split Sharpes of the in-sample-best configuration > 0; embargo bars dropped at both ends of every block",
+    "bars": 20000,
+    "blocks": 8,
+    "drift_bps_per_bar": 2.0,
+    "embargos": [
+      0,
+      168,
+      480
+    ],
+    "fee_bps": 10.0,
+    "garch": "alpha 0.10, beta 0.85, Student-t df 5 unit variance, unconditional bar vol 0.02/sqrt(12)",
+    "grid": "sma fast=10,20,50;slow=100,200,400",
+    "seed": 7,
+    "series": 100,
+    "slippage_bps": 5.0,
+    "test_blocks": 2
+  },
+  "provenance": {
+    "command": "cargo run --locked --release -q -- cpcvembargo --series 100 --bars 20000 --seed 7 --drift-bps 2 --embargos 0,168,480 --out results/206-cpcvembargo.json",
+    "data_sources": [
+      {
+        "license": "none (generated)",
+        "url": "synthetic seeded GARCH(1,1) Student-t series generated in-process"
+      }
+    ],
+    "hardware": "linux x86_64",
+    "seeds": [
+      7
+    ],
+    "started_at": "2026-11-17T13:40:24Z",
+    "wall_s": 11.0
+  }
+}
