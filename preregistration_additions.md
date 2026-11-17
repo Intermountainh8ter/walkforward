@@ -149,3 +149,13 @@ Pre-registered metric: `/arms/2/acceptance_rate` in `results/209-cpcvleak.json`.
 Expected: full-leak arm acceptance rate at least 0.50.
 
 Falsifier: a full-leak arm acceptance rate below 0.50, or a no-leak arm rate above 0.10.
+
+## 2026-11-17T14:07:00Z cpcvmix proposal:80905c411668868c8c7e07165e8ba193f676b20de1b11012f42432b9a4da8682
+
+Hypothesis: on 100 seeded GARCH(1,1) Student-t series of 20,000 bars (50 with a planted drift of 2 bps per bar, 50 with zero drift, seed 7, sma grid fast=10,20,50 slow=100,200,400, 15 bps per fill, 8 blocks, 2 test blocks, embargo 24 bars), the CPCV accept rule yields precision (planted-drift series among all accepted series) of at least 0.90, with at most 2 of the 50 zero-drift series accepted.
+
+Pre-registered metric: `/precision` in `results/212-cpcvmix.json`.
+
+Expected: precision at least 0.90.
+
+Falsifier: precision below 0.90, or no series accepted at all.

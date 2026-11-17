@@ -223,3 +223,13 @@ The pre-registered hypothesis (acceptance at 168 bars between 0.45 and 0.80) hel
 | 1 | 100 | 0.963 to 1.0 |
 
 The pre-registered hypothesis (full-leak acceptance at least 0.50, no-leak acceptance at most 0.10) held. The accept rule does not detect a leak; it accepts the leaked series. The series are synthetic.
+
+## Mixed-population accept test (`cpcvmix`)
+
+`cpcvmix` applies the CPCV accept rule to 100 seeded GARCH(1,1) Student-t series of 20,000 bars (50 with a planted 2 bps per-bar drift, 50 with zero drift, seed 7, 8 blocks, 2 test blocks, embargo 24 bars). Results in `results/212-cpcvmix.json`, run with `cargo run --locked --release -q -- cpcvmix --series 100 --bars 20000 --seed 7 --drift-bps 2 --out results/212-cpcvmix.json`.
+
+| planted series accepted (of 50) | zero-drift series accepted (of 50) | precision |
+|---|---|---|
+| 32 | 0 | 1.0 |
+
+The pre-registered hypothesis (precision at least 0.90) held. Precision is the share of accepted series that carried the planted drift. The series are synthetic.

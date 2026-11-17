@@ -165,6 +165,19 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Run the CPCV accept rule on a mixed population of drifted and zero-drift GARCH series and report precision.
+    Cpcvmix {
+        #[arg(long, default_value_t = 100)]
+        series: usize,
+        #[arg(long, default_value_t = 20000)]
+        bars: usize,
+        #[arg(long, default_value_t = 7)]
+        seed: u64,
+        #[arg(long)]
+        drift_bps: f64,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Plant the look-ahead rule on a fraction of bars in zero-drift GARCH series and report CPCV accept-rule acceptance per fraction.
     Cpcvleak {
         #[arg(long, default_value_t = 100)]
@@ -1578,6 +1591,57 @@ fn cpcvpower(series: usize, bars: usize, seed: u64, drift_bps: f64, out: &PathBu
     Ok(())
 }
 
+/// First half of the series carry the planted drift, the rest zero drift. Returns (accepted drifted, accepted null, n drifted, n null).
+pub fn cpcvmix_count(series: usize, n_bars: usize, seed: u64, blocks: usize, test_blocks: usize, embargo: usize, drift_bps: f64) -> (usize, usize, usize, usize) {
+    let costs = Costs { fee_bps: 10.0, slippage_bps: 5.0 };
+    let n_true = series / 2;
+    let mut rng = rand_pcg::Pcg64::seed_from_u64(seed);
+    let (mut acc_true, mut acc_null) = (0usize, 0usize);
+    for i in 0..series {
+        let planted = i < n_true;
+        let d = if planted { drift_bps / 10_000.0 } else { 0.0 };
+        let b = synthetic_bars_garch_drift(&mut rng, n_bars, d);
+        let m = sma_grid_matrix(&b, &costs);
+        let ss = cpcv_split_sharpes(&m, 9, blocks, test_blocks, embargo);
+        if cpcv_accept(&ss) {
+            if planted { acc_true += 1 } else { acc_null += 1 }
+        }
+    }
+    (acc_true, acc_null, n_true, series - n_true)
+}
+
+fn cpcvmix(series: usize, bars: usize, seed: u64, drift_bps: f64, out: &PathBuf) -> anyhow::Result<()> {
+    let t0 = std::time::Instant::now();
+    let started = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs();
+    let (blocks, test_blocks, embargo) = (8, 2, 24);
+    let (at, an, nt, nn) = cpcvmix_count(series, bars, seed, blocks, test_blocks, embargo, drift_bps);
+    let accepted = at + an;
+    let precision = if accepted == 0 { serde_json::Value::Null } else { serde_json::json!(at as f64 / accepted as f64) };
+    let doc = serde_json::json!({
+        "precision": precision,
+        "accepted_total": accepted,
+        "accepted_planted": at, "accepted_null": an,
+        "planted_series": nt, "null_series": nn,
+        "retention_of_planted": at as f64 / nt.max(1) as f64,
+        "acceptance_of_null": an as f64 / nn.max(1) as f64,
+        "config": { "series": series, "bars": bars, "seed": seed, "blocks": blocks, "test_blocks": test_blocks, "embargo_bars": embargo, "drift_bps_per_bar": drift_bps,
+                    "grid": "sma fast=10,20,50;slow=100,200,400", "fee_bps": 10.0, "slippage_bps": 5.0,
+                    "garch": "alpha 0.10, beta 0.85, Student-t df 5 unit variance, unconditional bar vol 0.02/sqrt(12)",
+                    "population": "first half of series planted drift, second half zero drift, one seeded stream",
+                    "accept_rule": "5th percentile (sorted index floor(0.05*(n-1))) of out-of-sample split Sharpes of the in-sample-best configuration > 0; embargo bars dropped at both ends of every block" },
+        "provenance": {
+            "started_at": utc_iso(started),
+            "seeds": [seed],
+            "command": format!("cargo run --locked --release -q -- cpcvmix --series {series} --bars {bars} --seed {seed} --drift-bps {drift_bps} --out {}", out.display()),
+            "hardware": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
+            "wall_s": t0.elapsed().as_secs_f64().round(),
+            "data_sources": [{"url": "synthetic seeded GARCH(1,1) Student-t series generated in-process", "license": "none (generated)"}],
+        },
+    });
+    std::fs::write(out, serde_json::to_string_pretty(&doc)? + "\n")?;
+    Ok(())
+}
+
 /// Returns json of one arm per embargo width: CPCV acceptance rate on the same seeded GARCH series with a planted drift.
 pub fn cpcvembargo_count(series: usize, n_bars: usize, seed: u64, blocks: usize, test_blocks: usize, embargos: &[usize], drift_bps: f64) -> serde_json::Value {
     let costs = Costs { fee_bps: 10.0, slippage_bps: 5.0 };
@@ -2084,6 +2148,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::Garchpass { series, bars, seed, out } => garchpass(series, bars, seed, &out),
         Cmd::Cpcvembargo { series, bars, seed, drift_bps, embargos, out } => cpcvembargo(series, bars, seed, drift_bps, &embargos, &out),
         Cmd::Cpcvleak { series, bars, seed, fractions, out } => cpcvleak(series, bars, seed, &fractions, &out),
+        Cmd::Cpcvmix { series, bars, seed, drift_bps, out } => cpcvmix(series, bars, seed, drift_bps, &out),
         Cmd::Cpcvpower { series, bars, seed, drift_bps, out } => cpcvpower(series, bars, seed, drift_bps, &out),
         Cmd::Garchpower { series, bars, seed, drift_bps, out } => garchpower(series, bars, seed, drift_bps, &out),
         Cmd::Cleanpair { pairs, bars, seed, out } => cleanpair(pairs, bars, seed, &out),
@@ -2290,6 +2355,15 @@ mod tests {
         assert_eq!(a, b);
         assert_eq!(a.as_array().unwrap().len(), 2);
         assert_eq!(a[1]["splits_per_series"], 28);
+    }
+
+    #[test]
+    fn cpcvmix_is_deterministic_and_splits_population_in_half() {
+        let a = cpcvmix_count(4, 3000, 7, 8, 2, 24, 2.0);
+        let b = cpcvmix_count(4, 3000, 7, 8, 2, 24, 2.0);
+        assert_eq!(a, b);
+        assert_eq!((a.2, a.3), (2, 2));
+        assert!(a.0 <= a.2 && a.1 <= a.3);
     }
 
     #[test]
