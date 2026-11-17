@@ -165,6 +165,19 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Plant the look-ahead rule on a fraction of bars in zero-drift GARCH series and report CPCV accept-rule acceptance per fraction.
+    Cpcvleak {
+        #[arg(long, default_value_t = 100)]
+        series: usize,
+        #[arg(long, default_value_t = 20000)]
+        bars: usize,
+        #[arg(long, default_value_t = 7)]
+        seed: u64,
+        #[arg(long, value_delimiter = ',')]
+        fractions: Vec<f64>,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Plant a per-bar drift in GARCH(1,1) Student-t series and report CPCV acceptance per embargo width (one arm each).
     Cpcvembargo {
         #[arg(long, default_value_t = 100)]
@@ -1766,6 +1779,75 @@ fn leakfrac(series: usize, bars: usize, seed: u64, fractions: &[f64], out: &Path
     Ok(())
 }
 
+/// Returns json array, one arm per leak fraction: CPCV acceptance on identical zero-drift GARCH paths.
+pub fn cpcvleak_count(series: usize, n_bars: usize, seed: u64, blocks: usize, test_blocks: usize, embargo: usize, fractions: &[f64]) -> serde_json::Value {
+    use rand::Rng;
+    let costs = Costs { fee_bps: 10.0, slippage_bps: 5.0 };
+    let mut arms = Vec::new();
+    for &f in fractions {
+        let mut rng = rand_pcg::Pcg64::seed_from_u64(seed);
+        let mut mrng = rand_pcg::Pcg64::seed_from_u64(seed ^ 0x6c65_616b);
+        let (mut pass, mut n_splits) = (0usize, 0usize);
+        for _ in 0..series {
+            let b = synthetic_bars_garch(&mut rng, n_bars);
+            let mask: Vec<bool> = (0..n_bars).map(|_| mrng.gen::<f64>() < f).collect();
+            let strat = MaskedLookahead { mask };
+            let mut configs = Vec::new();
+            for fa in [10.0, 20.0, 50.0] {
+                for sl in [100.0, 200.0, 400.0] {
+                    let mut p = Params::new();
+                    p.insert("fast".into(), fa);
+                    p.insert("slow".into(), sl);
+                    configs.push(p);
+                }
+            }
+            let start = configs.iter().map(|c| strat.warmup(c)).max().unwrap_or(0) + 1;
+            let mut m = vec![vec![0.0; configs.len()]; b.len() - start];
+            for (ci, c) in configs.iter().enumerate() {
+                let (r, _) = simulate(&strat, &b, c, &costs, start, b.len());
+                for (t, v) in r.iter().enumerate() {
+                    m[t][ci] = *v;
+                }
+            }
+            let ss = cpcv_split_sharpes(&m, 9, blocks, test_blocks, embargo);
+            n_splits = ss.len();
+            pass += cpcv_accept(&ss) as usize;
+        }
+        let (lo, hi) = wilson(pass, series);
+        arms.push(serde_json::json!({
+            "leak_fraction": f, "accepted_count": pass, "acceptance_rate": pass as f64 / series.max(1) as f64,
+            "wilson95_low": lo, "wilson95_high": hi, "splits_per_series": n_splits,
+        }));
+    }
+    serde_json::Value::Array(arms)
+}
+
+fn cpcvleak(series: usize, bars: usize, seed: u64, fractions: &[f64], out: &PathBuf) -> anyhow::Result<()> {
+    let t0 = std::time::Instant::now();
+    let started = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs();
+    let (blocks, test_blocks, embargo) = (8, 2, 24);
+    let arms = cpcvleak_count(series, bars, seed, blocks, test_blocks, embargo, fractions);
+    let fr: Vec<String> = fractions.iter().map(|f| f.to_string()).collect();
+    let doc = serde_json::json!({
+        "arms": arms,
+        "config": { "series": series, "bars": bars, "seed": seed, "blocks": blocks, "test_blocks": test_blocks, "embargo_bars": embargo,
+                    "grid": "fast=10,20,50;slow=100,200,400", "fee_bps": 10.0, "slippage_bps": 5.0,
+                    "garch": "alpha 0.10, beta 0.85, Student-t df 5 unit variance, unconditional bar vol 0.02/sqrt(12), zero drift",
+                    "leak_rule": "lookahead grid (horizon fast/10 bars, threshold slow/100 bps) on bars drawn with probability equal to the fraction, causal sma elsewhere",
+                    "accept_rule": "5th percentile (sorted index floor(0.05*(n-1))) of out-of-sample split Sharpes of the in-sample-best configuration > 0; embargo bars dropped at both ends of every block" },
+        "provenance": {
+            "started_at": utc_iso(started),
+            "seeds": [seed],
+            "command": format!("cargo run --locked --release -q -- cpcvleak --series {series} --bars {bars} --seed {seed} --fractions {} --out {}", fr.join(","), out.display()),
+            "hardware": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
+            "wall_s": t0.elapsed().as_secs_f64().round(),
+            "data_sources": [{"url": "synthetic seeded GARCH(1,1) Student-t series generated in-process", "license": "none (generated)"}],
+        },
+    });
+    std::fs::write(out, serde_json::to_string_pretty(&doc)? + "\n")?;
+    Ok(())
+}
+
 /// Per-embargo combined pass counts on identical zero-drift paths. The sma grid is simulated once
 /// per series; only the CSCV step changes with the embargo.
 pub fn embargosweep_count(series: usize, n_bars: usize, seed: u64, blocks: usize, embargoes: &[usize]) -> (serde_json::Value, Vec<usize>) {
@@ -2001,6 +2083,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::Cpcvpass { series, bars, seed, out } => cpcvpass(series, bars, seed, &out),
         Cmd::Garchpass { series, bars, seed, out } => garchpass(series, bars, seed, &out),
         Cmd::Cpcvembargo { series, bars, seed, drift_bps, embargos, out } => cpcvembargo(series, bars, seed, drift_bps, &embargos, &out),
+        Cmd::Cpcvleak { series, bars, seed, fractions, out } => cpcvleak(series, bars, seed, &fractions, &out),
         Cmd::Cpcvpower { series, bars, seed, drift_bps, out } => cpcvpower(series, bars, seed, drift_bps, &out),
         Cmd::Garchpower { series, bars, seed, drift_bps, out } => garchpower(series, bars, seed, drift_bps, &out),
         Cmd::Cleanpair { pairs, bars, seed, out } => cleanpair(pairs, bars, seed, &out),
@@ -2197,6 +2280,15 @@ mod tests {
         assert_eq!(a, b);
         assert_eq!(a.as_array().unwrap().len(), 3);
         assert_eq!(a[1]["embargo_bars"], 24);
+        assert_eq!(a[1]["splits_per_series"], 28);
+    }
+
+    #[test]
+    fn cpcvleak_is_deterministic_with_one_arm_per_fraction() {
+        let a = cpcvleak_count(2, 3000, 7, 8, 2, 24, &[0.0, 1.0]);
+        let b = cpcvleak_count(2, 3000, 7, 8, 2, 24, &[0.0, 1.0]);
+        assert_eq!(a, b);
+        assert_eq!(a.as_array().unwrap().len(), 2);
         assert_eq!(a[1]["splits_per_series"], 28);
     }
 

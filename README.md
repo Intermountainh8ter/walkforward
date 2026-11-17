@@ -211,3 +211,15 @@ The pre-registered range for the GARCH arm (0.30 to 0.90) held. The series are s
 | 480 bars | 46 | 0.46 |
 
 The pre-registered hypothesis (acceptance at 168 bars between 0.45 and 0.80) held. Acceptance fell as the embargo widened. The series are synthetic with a constant drift.
+
+## CPCV accept rule with a planted look-ahead (`cpcvleak`)
+
+`cpcvleak` runs the CPCV accept rule from `cpcvpass` (8 blocks, 2 test blocks, 28 splits, embargo 24 bars) on 100 seeded zero-drift GARCH(1,1) Student-t series of 20,000 bars (seed 7, sma grid, 15 bps per fill). The look-ahead rule from `leakfrac` is planted on a random fraction of bars. Results in `results/209-cpcvleak.json`, run with `cargo run --locked --release -q -- cpcvleak --series 100 --bars 20000 --seed 7 --fractions 0,0.1,1 --out results/209-cpcvleak.json`.
+
+| leaked bars | accepted (of 100) | Wilson 95% interval |
+|---|---|---|
+| 0 | 0 | 0.0 to 0.037 |
+| 0.1 | 18 | 0.117 to 0.267 |
+| 1 | 100 | 0.963 to 1.0 |
+
+The pre-registered hypothesis (full-leak acceptance at least 0.50, no-leak acceptance at most 0.10) held. The accept rule does not detect a leak; it accepts the leaked series. The series are synthetic.

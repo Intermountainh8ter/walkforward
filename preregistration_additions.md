@@ -139,3 +139,13 @@ Pre-registered metric: `/arms/1/acceptance_rate` in `results/206-cpcvembargo.jso
 Expected: acceptance rate at embargo 168 bars lies between 0.45 and 0.80.
 
 Falsifier: an acceptance rate at embargo 168 bars below 0.45 or above 0.80.
+
+## 2026-11-17T13:54:25Z cpcvleak proposal:d1ef12416c6c271b405c6d6692e2e7887c32eee7b2a941aa553b705e7076faeb
+
+Hypothesis: on 100 seeded zero-drift GARCH(1,1) Student-t series of 20,000 bars (seed 7, sma grid, 15 bps per fill, 8 blocks, 2 test blocks, embargo 24 bars), the CPCV accept rule accepts at least 0.50 of series when the look-ahead rule is planted on every bar (arm 2), while accepting at most 0.10 with no leak (arm 0). Arms are leaked fractions 0, 0.1, 1.
+
+Pre-registered metric: `/arms/2/acceptance_rate` in `results/209-cpcvleak.json`.
+
+Expected: full-leak arm acceptance rate at least 0.50.
+
+Falsifier: a full-leak arm acceptance rate below 0.50, or a no-leak arm rate above 0.10.
