@@ -159,3 +159,13 @@ Pre-registered metric: `/precision` in `results/212-cpcvmix.json`.
 Expected: precision at least 0.90.
 
 Falsifier: precision below 0.90, or no series accepted at all.
+
+## 2026-11-17T14:20:53Z cpcvnullembargo proposal:df7fbd8655bcf68d7f86a7c99f8cb0c67818cc217978c32b1bc556beea0a2211
+
+Hypothesis: on 100 seeded zero-drift GARCH(1,1) Student-t series of 20,000 bars (seed 7, sma grid, 15 bps per fill, 8 blocks, 2 test blocks), the CPCV accept rule at embargo 0 bars accepts at most 0.10 of series, and the accepted count does not rise at embargo 168 or 480 bars.
+
+Pre-registered metric: `/arms/0/acceptance_rate` in `results/214-cpcvnullembargo.json`.
+
+Expected: acceptance rate at embargo 0 is at most 0.10.
+
+Falsifier: an acceptance rate above 0.10 at embargo 0, or a higher accepted count at embargo 168 or 480 than at embargo 0.

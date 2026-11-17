@@ -233,3 +233,15 @@ The pre-registered hypothesis (full-leak acceptance at least 0.50, no-leak accep
 | 32 | 0 | 1.0 |
 
 The pre-registered hypothesis (precision at least 0.90) held. Precision is the share of accepted series that carried the planted drift. The series are synthetic.
+
+## CPCV embargo width at zero drift (`cpcvnullembargo`)
+
+The same `cpcvembargo` subcommand run with a planted drift of 0 bps per bar (100 seeded GARCH(1,1) Student-t series, 20,000 bars each, seed 7, sma grid, 15 bps per fill, 8 blocks, 2 test blocks). Results in `results/214-cpcvnullembargo.json`, run with `cargo run --locked --release -q -- cpcvembargo --series 100 --bars 20000 --seed 7 --drift-bps 0 --embargos 0,168,480 --out results/214-cpcvnullembargo.json`.
+
+| embargo | accepted (of 100) | acceptance rate |
+|---|---|---|
+| 0 bars | 0 | 0.0 |
+| 168 bars | 1 | 0.01 |
+| 480 bars | 1 | 0.01 |
+
+The first part of the pre-registered hypothesis (acceptance at embargo 0 at most 0.10) held. The second part (accepted count not higher at 168 or 480 bars than at 0) was refuted: one series was accepted at each wider embargo. One series of 100 is a small count. The series are synthetic.
