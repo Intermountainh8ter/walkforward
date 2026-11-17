@@ -129,6 +129,17 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Run the sma-grid DSR and PBO gates on zero-drift i.i.d. and GARCH(1,1) Student-t series.
+    Garchpass {
+        #[arg(long, default_value_t = 100)]
+        series: usize,
+        #[arg(long, default_value_t = 20000)]
+        bars: usize,
+        #[arg(long, default_value_t = 7)]
+        seed: u64,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Rerun the zero-drift sma null with 4, 9, 16 and 25 configurations and count combined passes.
     Gridsweep {
         #[arg(long, default_value_t = 100)]
@@ -1199,6 +1210,90 @@ fn leakpass(series: usize, bars: usize, seed: u64, out: &PathBuf) -> anyhow::Res
     Ok(())
 }
 
+fn std_normal(rng: &mut rand_pcg::Pcg64) -> f64 {
+    use rand::Rng;
+    let (u1, u2) = (1.0 - rng.random::<f64>(), rng.random::<f64>());
+    (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos()
+}
+
+/// Zero-drift GARCH(1,1) with unit-variance Student-t(5) innovations. Unconditional per-bar
+/// volatility matches the uniform +-1% i.i.d. walk (0.02 / sqrt(12)); alpha 0.1, beta 0.85.
+fn synthetic_bars_garch(rng: &mut rand_pcg::Pcg64, n: usize) -> Vec<Bar> {
+    let (alpha, beta, df) = (0.10f64, 0.85f64, 5usize);
+    let var0 = (0.02f64 * 0.02) / 12.0;
+    let omega = var0 * (1.0 - alpha - beta);
+    let scale = (3.0f64 / 5.0).sqrt();
+    let (mut var, mut px) = (var0, 100.0f64);
+    (0..n)
+        .map(|i| {
+            let chi: f64 = (0..df).map(|_| std_normal(rng).powi(2)).sum();
+            let t = std_normal(rng) / (chi / df as f64).sqrt() * scale;
+            let r = (var.sqrt() * t).max(-0.5);
+            var = omega + alpha * r * r + beta * var;
+            let open = px;
+            px *= 1.0 + r;
+            let (hi, lo) = (open.max(px) * 1.001, open.min(px) * 0.999);
+            Bar { ts_ms: i as i64 * 3_600_000, open, high: hi, low: lo, close: px, volume: 1.0 }
+        })
+        .collect()
+}
+
+/// Returns json of arms [iid, garch] and their combined pass counts. Same seed in both arms.
+pub fn garchpass_count(series: usize, n_bars: usize, seed: u64, blocks: usize) -> (serde_json::Value, (usize, usize)) {
+    let costs = Costs { fee_bps: 10.0, slippage_bps: 5.0 };
+    let mut arms = Vec::new();
+    let mut counts = Vec::new();
+    for name in ["iid", "garch"] {
+        let mut rng = rand_pcg::Pcg64::seed_from_u64(seed);
+        let (mut pass, mut dsr_pass, mut pbo_pass) = (0usize, 0usize, 0usize);
+        let (mut dsr_sum, mut pbo_sum) = (0.0, 0.0);
+        for _ in 0..series {
+            let b = if name == "iid" { synthetic_bars(&mut rng, n_bars) } else { synthetic_bars_garch(&mut rng, n_bars) };
+            let (dsr, pbo) = gate_on_series(&b, &costs, blocks);
+            let (d_ok, p_ok) = (dsr >= 0.95, pbo <= 0.5);
+            dsr_pass += d_ok as usize;
+            pbo_pass += p_ok as usize;
+            pass += (d_ok && p_ok) as usize;
+            dsr_sum += dsr;
+            pbo_sum += pbo;
+        }
+        let (lo, hi) = wilson(pass, series);
+        let n = series.max(1) as f64;
+        arms.push(serde_json::json!({
+            "arm": name, "null_pass_count": pass, "null_pass_rate": pass as f64 / n,
+            "wilson95_low": lo, "wilson95_high": hi,
+            "dsr_only_pass_count": dsr_pass, "pbo_only_pass_count": pbo_pass,
+            "mean_dsr": dsr_sum / n, "mean_pbo": pbo_sum / n,
+        }));
+        counts.push(pass);
+    }
+    (serde_json::Value::Array(arms), (counts[0], counts[1]))
+}
+
+fn garchpass(series: usize, bars: usize, seed: u64, out: &PathBuf) -> anyhow::Result<()> {
+    let t0 = std::time::Instant::now();
+    let started = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs();
+    let blocks = 8;
+    let (arms, _) = garchpass_count(series, bars, seed, blocks);
+    let doc = serde_json::json!({
+        "arms": arms,
+        "config": { "series": series, "bars": bars, "seed": seed, "cscv_blocks": blocks,
+                    "grid": "sma fast=10,20,50;slow=100,200,400", "fee_bps": 10.0, "slippage_bps": 5.0,
+                    "garch": "zero drift, alpha 0.10, beta 0.85, Student-t df 5 unit variance, unconditional bar vol 0.02/sqrt(12)",
+                    "gate": "DSR >= 0.95 and PBO <= 0.5, full sample" },
+        "provenance": {
+            "started_at": utc_iso(started),
+            "seeds": [seed],
+            "command": format!("cargo run --locked --release -q -- garchpass --series {series} --bars {bars} --seed {seed} --out {}", out.display()),
+            "hardware": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
+            "wall_s": t0.elapsed().as_secs_f64().round(),
+            "data_sources": [{"url": "synthetic seeded GARCH(1,1) Student-t series generated in-process", "license": "none (generated)"}],
+        },
+    });
+    std::fs::write(out, serde_json::to_string_pretty(&doc)? + "\n")?;
+    Ok(())
+}
+
 /// Strong full-lookahead grid: long when the close `fast/10` bars ahead beats this close by `slow/100` bps.
 pub struct LookaheadGrid;
 impl Strategy for LookaheadGrid {
@@ -1580,6 +1675,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::Cleangrade { pairs, bars, seed, out } => cleangrade(pairs, bars, seed, &out),
         Cmd::Nullpass { series, bars, seed, out } => nullpass(series, bars, seed, &out),
         Cmd::Leakpass { series, bars, seed, out } => leakpass(series, bars, seed, &out),
+        Cmd::Garchpass { series, bars, seed, out } => garchpass(series, bars, seed, &out),
         Cmd::Cleanpair { pairs, bars, seed, out } => cleanpair(pairs, bars, seed, &out),
         Cmd::Gridsweep { series, bars, seed, out } => gridsweep(series, bars, seed, &out),
         Cmd::Leakfrac { series, bars, seed, fractions, out } => leakfrac(series, bars, seed, &fractions, &out),
@@ -1741,6 +1837,19 @@ mod tests {
         let (_, null) = nullpass_count(3, 1500, 7, 4);
         assert_eq!(ca.0, null);
         assert!(ca.1 <= 3);
+    }
+
+    #[test]
+    fn garchpass_is_deterministic_and_iid_arm_matches_nullpass() {
+        let (a, c) = garchpass_count(3, 1500, 7, 4);
+        let (b, _) = garchpass_count(3, 1500, 7, 4);
+        assert_eq!(a, b);
+        let (_, null) = nullpass_count(3, 1500, 7, 4);
+        assert_eq!(c.0, null);
+        assert_eq!(a[1]["arm"], "garch");
+        let mut rng = rand_pcg::Pcg64::seed_from_u64(7);
+        let bs = synthetic_bars_garch(&mut rng, 500);
+        assert!(bs.iter().all(|x| x.close.is_finite() && x.close > 0.0));
     }
 
     #[test]

@@ -155,3 +155,14 @@ The pre-registered hypothesis (at most 3 of 100 at every embargo length) was sup
 | all three | 0 |
 
 The pre-registered hypothesis (Reality Check passes at most 10 of 100) was supported. Power was not tested here, and the series are synthetic random walks with a nine-configuration grid.
+
+## Volatility-clustered null gate test (`garchpass`)
+
+`garchpass` runs the same sma-grid DSR and CSCV PBO gates on 100 seeded zero-drift series of 20,000 bars (seed 7, 15 bps per fill, 8 CSCV blocks) in two arms on the same seed: an i.i.d. random walk, and a GARCH(1,1) series with Student-t innovations. Results in `results/198-garchpass.json`, run with `cargo run --locked --release -q -- garchpass --series 100 --bars 20000 --seed 7 --out results/198-garchpass.json`.
+
+| arm | combined pass count (of 100) | Wilson 95% interval |
+|---|---|---|
+| i.i.d. | 0 | 0.0 to 0.037 |
+| GARCH | 0 | 0.0 to 0.037 |
+
+The pre-registered hypothesis (GARCH arm passes at most 5 of 100) held. The GARCH parameters are one fixed choice, and the series are synthetic; the result says nothing about real crypto bars.

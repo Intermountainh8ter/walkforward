@@ -89,3 +89,13 @@ Pre-registered metric: `/reality_check/null_pass_count` in `results/183-realityc
 Expected: null pass count at most 10 of 100 (range 0 to 10).
 
 Falsifier: a Reality Check null pass count above 10 of 100.
+
+## 2026-11-17T13:01:27Z garchpass proposal:0883b8a5f9d9dd4befc75baf52e93cdbaed1e5c1eeb8d04aabead9276131d5f4
+
+Hypothesis: on 100 seeded zero-drift GARCH(1,1) Student-t series of 20,000 bars (seed 7, sma grid fast=10,20,50 slow=100,200,400, 15 bps per fill, 8 CSCV blocks), the combined gate (DSR >= 0.95 and PBO <= 0.5) passes at most 5 of 100 series, so volatility clustering does not raise the null pass count above the i.i.d. arm's range by more than 5. Arm 0 is the i.i.d. arm on the same seed, arm 1 is the GARCH arm.
+
+Pre-registered metric: `/arms/1/null_pass_count` in `results/198-garchpass.json`.
+
+Expected: GARCH arm null pass count at most 5 of 100 (range 0 to 5).
+
+Falsifier: a GARCH-arm combined-gate pass count above 5 of 100.

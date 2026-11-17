@@ -1,0 +1,52 @@
+{
+  "arms": [
+    {
+      "arm": "iid",
+      "dsr_only_pass_count": 0,
+      "mean_dsr": 0.29954836140043956,
+      "mean_pbo": 0.5345714285714286,
+      "null_pass_count": 0,
+      "null_pass_rate": 0.0,
+      "pbo_only_pass_count": 47,
+      "wilson95_high": 0.03699480747600191,
+      "wilson95_low": 0.0
+    },
+    {
+      "arm": "garch",
+      "dsr_only_pass_count": 1,
+      "mean_dsr": 0.3508190219773676,
+      "mean_pbo": 0.5157142857142856,
+      "null_pass_count": 0,
+      "null_pass_rate": 0.0,
+      "pbo_only_pass_count": 45,
+      "wilson95_high": 0.03699480747600191,
+      "wilson95_low": 0.0
+    }
+  ],
+  "config": {
+    "bars": 20000,
+    "cscv_blocks": 8,
+    "fee_bps": 10.0,
+    "garch": "zero drift, alpha 0.10, beta 0.85, Student-t df 5 unit variance, unconditional bar vol 0.02/sqrt(12)",
+    "gate": "DSR >= 0.95 and PBO <= 0.5, full sample",
+    "grid": "sma fast=10,20,50;slow=100,200,400",
+    "seed": 7,
+    "series": 100,
+    "slippage_bps": 5.0
+  },
+  "provenance": {
+    "command": "cargo run --locked --release -q -- garchpass --series 100 --bars 20000 --seed 7 --out results/198-garchpass.json",
+    "data_sources": [
+      {
+        "license": "none (generated)",
+        "url": "synthetic seeded GARCH(1,1) Student-t series generated in-process"
+      }
+    ],
+    "hardware": "linux x86_64",
+    "seeds": [
+      7
+    ],
+    "started_at": "2026-11-17T13:01:34Z",
+    "wall_s": 22.0
+  }
+}
