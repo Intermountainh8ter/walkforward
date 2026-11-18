@@ -245,3 +245,14 @@ The same `cpcvembargo` subcommand run with a planted drift of 0 bps per bar (100
 | 480 bars | 1 | 0.01 |
 
 The first part of the pre-registered hypothesis (acceptance at embargo 0 at most 0.10) held. The second part (accepted count not higher at 168 or 480 bars than at 0) was refuted: one series was accepted at each wider embargo. One series of 100 is a small count. The series are synthetic.
+
+## DSR+PBO gate power on GARCH series at 2 bps (`garchpower`)
+
+`garchpower` at a planted drift of 2 bps per bar (100 series of 20,000 bars, seed 7, sma grid, 15 bps per fill, 8 CSCV blocks). Results in `results/264-garchpower2bp.json`, run with `cargo run --locked --release -q -- garchpower --series 100 --bars 20000 --seed 7 --drift-bps 2 --out results/264-garchpower2bp.json`.
+
+| arm | combined DSR+PBO acceptance rate | Wilson 95% interval |
+|---|---|---|
+| iid | 0.54 | 0.443 to 0.634 |
+| garch | 0.55 | 0.452 to 0.644 |
+
+The pre-registered hypothesis (garch arm between 0.35 and 0.65) held. The series are synthetic with a constant drift; the result says nothing about real crypto bars.

@@ -169,3 +169,13 @@ Pre-registered metric: `/arms/0/acceptance_rate` in `results/214-cpcvnullembargo
 Expected: acceptance rate at embargo 0 is at most 0.10.
 
 Falsifier: an acceptance rate above 0.10 at embargo 0, or a higher accepted count at embargo 168 or 480 than at embargo 0.
+
+## 2026-11-18T14:45:12Z garchpower2bp proposal:24c2346e6dd039eb3de97c22a27ac0b62ec011aff1fad771b68f67299c71ada7
+
+Hypothesis: on 100 seeded series of 20,000 bars (seed 7, sma grid fast=10,20,50 slow=100,200,400, 15 bps per fill, 8 CSCV blocks) with a planted drift of 2 bps per bar, the combined DSR+PBO gate accepts a lower share of GARCH(1,1) Student-t series than the 0.66 CPCV acceptance rate in results/205-cpcvpower.json, between 0.35 and 0.65.
+
+Pre-registered metric: `/arms/1/acceptance_rate` in `results/264-garchpower2bp.json`.
+
+Expected: GARCH-arm acceptance rate at 2 bps between 0.35 and 0.65.
+
+Falsifier: a GARCH-arm acceptance rate below 0.35 or at or above 0.66.
